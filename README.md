@@ -4,6 +4,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/danceable/provider)](https://goreportcard.com/report/github.com/danceable/provider)
 [![Coverage Status](https://coveralls.io/repos/github/danceable/provider/badge.svg)](https://coveralls.io/github/danceable/provider?branch=main)
 
+<p align="center">
+  <img src="logo.svg" alt="Provider Logo" />
+</p>
+
 # Provider
 
 Provider is a lightweight service provider manager for Go projects.

@@ -1,0 +1,33 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="#f4f6f8"/>
+
+  <!-- Package box -->
+  <rect x="50" y="70" width="100" height="70" rx="8" fill="#4A90E2"/>
+  <rect x="50" y="70" width="100" height="20" fill="#357ABD"/>
+
+  <!-- Box lid line -->
+  <line x1="50" y1="90" x2="150" y2="90" stroke="#2C5FA3" stroke-width="2"/>
+
+  <!-- Service nodes (circles) -->
+  <circle cx="70" cy="50" r="8" fill="#50E3C2"/>
+  <circle cx="100" cy="40" r="8" fill="#50E3C2"/>
+  <circle cx="130" cy="50" r="8" fill="#50E3C2"/>
+
+  <!-- Connection lines -->
+  <line x1="70" y1="58" x2="75" y2="70" stroke="#7ED6C1" stroke-width="2"/>
+  <line x1="100" y1="48" x2="100" y2="70" stroke="#7ED6C1" stroke-width="2"/>
+  <line x1="130" y1="58" x2="125" y2="70" stroke="#7ED6C1" stroke-width="2"/>
+
+  <!-- Gear icon (service) -->
+  <circle cx="100" cy="105" r="12" fill="#ffffff"/>
+  <circle cx="100" cy="105" r="6" fill="#4A90E2"/>
+
+  <!-- Small ticks for gear -->
+  <g stroke="#ffffff" stroke-width="2">
+    <line x1="100" y1="88" x2="100" y2="95"/>
+    <line x1="100" y1="115" x2="100" y2="122"/>
+    <line x1="83" y1="105" x2="90" y2="105"/>
+    <line x1="110" y1="105" x2="117" y2="105"/>
+  </g>
+</svg>
