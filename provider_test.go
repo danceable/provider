@@ -18,11 +18,21 @@ type containerMock struct {
 	mock.Mock
 }
 
-func (m *containerMock) Reset()                                     { m.Called() }
-func (m *containerMock) Bind(r any, opts ...bind.BindOption) error  { return m.Called(r, opts).Error(0) }
-func (m *containerMock) Call(r any, opts ...resolve.ResolveOption) error { return m.Called(r, opts).Error(0) }
-func (m *containerMock) Resolve(a any, opts ...resolve.ResolveOption) error { return m.Called(a, opts).Error(0) }
-func (m *containerMock) Fill(r any, opts ...resolve.ResolveOption) error { return m.Called(r, opts).Error(0) }
+func (m *containerMock) Reset() { m.Called() }
+
+func (m *containerMock) Bind(r any, opts ...bind.BindOption) error { return m.Called(r, opts).Error(0) }
+
+func (m *containerMock) Call(r any, opts ...resolve.ResolveOption) error {
+	return m.Called(r, opts).Error(0)
+}
+
+func (m *containerMock) Resolve(a any, opts ...resolve.ResolveOption) error {
+	return m.Called(a, opts).Error(0)
+}
+
+func (m *containerMock) Fill(r any, opts ...resolve.ResolveOption) error {
+	return m.Called(r, opts).Error(0)
+}
 
 type providerMock struct {
 	mock.Mock
