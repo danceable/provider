@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/danceable/container/bind"
 	"github.com/danceable/container/resolve"
@@ -46,8 +47,8 @@ func (p *providerMock) Boot(ctx context.Context, c provider.Container) error {
 	return p.Called(ctx, c).Error(0)
 }
 
-func (p *providerMock) Terminate() error {
-	return p.Called().Error(0)
+func (p *providerMock) Terminate(ctx context.Context) error {
+	return p.Called(ctx).Error(0)
 }
 
 type orderedProviderMock struct {
@@ -70,18 +71,22 @@ func setupProviderMock(p *providerMock, name string, calls *[]string, regErr, bo
 		bootCall.Run(func(_ mock.Arguments) { *calls = append(*calls, name+".Boot") })
 	}
 
-	termCall := p.On("Terminate").Return(termErr)
+	termCall := p.On("Terminate", mock.Anything).Return(termErr)
 	if calls != nil {
 		termCall.Run(func(_ mock.Arguments) { *calls = append(*calls, name+".Terminate") })
 	}
 }
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 	require.NotNil(t, m)
 }
 
 func TestRegister_WithoutOrder(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 
 	var mocks [3]*providerMock
@@ -100,11 +105,13 @@ func TestRegister_WithoutOrder(t *testing.T) {
 	for _, p := range mocks {
 		p.AssertCalled(t, "Register", mock.Anything, mock.Anything)
 		p.AssertCalled(t, "Boot", mock.Anything, mock.Anything)
-		p.AssertCalled(t, "Terminate")
+		p.AssertCalled(t, "Terminate", mock.Anything)
 	}
 }
 
 func TestRegister_WithOrder(t *testing.T) {
+	t.Parallel()
+
 	var calls []string
 	m := provider.New(new(containerMock))
 
@@ -139,6 +146,8 @@ func TestRegister_WithOrder(t *testing.T) {
 }
 
 func TestRegister_MixedOrderAndUnordered(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 
 	ordered := &orderedProviderMock{order: 5}
@@ -160,6 +169,8 @@ func TestRegister_MixedOrderAndUnordered(t *testing.T) {
 }
 
 func TestRun_LifecycleOrder(t *testing.T) {
+	t.Parallel()
+
 	var calls []string
 	m := provider.New(new(containerMock))
 
@@ -189,6 +200,8 @@ func TestRun_LifecycleOrder(t *testing.T) {
 }
 
 func TestRun_RegisterError(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 	regErr := errors.New("register failed")
 
@@ -204,6 +217,8 @@ func TestRun_RegisterError(t *testing.T) {
 }
 
 func TestRun_BootError(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 	bootErr := errors.New("boot failed")
 
@@ -219,6 +234,8 @@ func TestRun_BootError(t *testing.T) {
 }
 
 func TestRun_TerminateError(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 	termErr := errors.New("terminate failed")
 
@@ -234,6 +251,8 @@ func TestRun_TerminateError(t *testing.T) {
 }
 
 func TestRun_TerminateReverseOrder(t *testing.T) {
+	t.Parallel()
+
 	var calls []string
 	m := provider.New(new(containerMock))
 
@@ -267,6 +286,8 @@ func TestRun_TerminateReverseOrder(t *testing.T) {
 }
 
 func TestRun_MultipleProvidersAtSameOrder(t *testing.T) {
+	t.Parallel()
+
 	var calls []string
 	m := provider.New(new(containerMock))
 
@@ -296,6 +317,8 @@ func TestRun_MultipleProvidersAtSameOrder(t *testing.T) {
 }
 
 func TestRun_NoProviders(t *testing.T) {
+	t.Parallel()
+
 	m := provider.New(new(containerMock))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -306,6 +329,8 @@ func TestRun_NoProviders(t *testing.T) {
 }
 
 func TestRun_BootErrorStopsEarly(t *testing.T) {
+	t.Parallel()
+
 	var calls []string
 	m := provider.New(new(containerMock))
 
@@ -333,6 +358,8 @@ func TestRun_BootErrorStopsEarly(t *testing.T) {
 }
 
 func TestRun_RegisterErrorStopsEarly(t *testing.T) {
+	t.Parallel()
+
 	var calls []string
 	m := provider.New(new(containerMock))
 
@@ -354,4 +381,69 @@ func TestRun_RegisterErrorStopsEarly(t *testing.T) {
 	assert.NotContains(t, calls, "p1.Boot")
 	assert.NotContains(t, calls, "p2.Boot")
 	assert.NotContains(t, calls, "p2.Register")
+}
+
+func TestRun_CallbackInvoked(t *testing.T) {
+	t.Parallel()
+
+	m := provider.New(new(containerMock))
+
+	p := new(providerMock)
+	setupProviderMock(p, "", nil, nil, nil, nil)
+	m.Register(p)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	callbackCalled := make(chan struct{})
+
+	err := m.Run(ctx, provider.WithCallback(func(ctx context.Context, c provider.Container) {
+		close(callbackCalled)
+		cancel()
+	}))
+
+	require.NoError(t, err)
+	<-callbackCalled
+}
+
+func TestRun_GracefulTerminationDelay(t *testing.T) {
+	t.Parallel()
+
+	m := provider.New(new(containerMock))
+
+	p := new(providerMock)
+	setupProviderMock(p, "", nil, nil, nil, nil)
+	m.Register(p)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	err := m.Run(ctx, provider.WithTerminationDelay(50*time.Millisecond))
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
+}
+
+func TestRun_TerminationDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	m := provider.New(new(containerMock))
+
+	p := new(providerMock)
+	p.On("Register", mock.Anything, mock.Anything).Return(nil)
+	p.On("Boot", mock.Anything, mock.Anything).Return(nil)
+	p.On("Terminate", mock.Anything).Run(func(args mock.Arguments) {
+		// Block longer than the deadline
+		time.Sleep(500 * time.Millisecond)
+	}).Return(nil)
+	m.Register(p)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := m.Run(ctx,
+		provider.WithTerminationDelay(0),
+		provider.WithTerminationDeadline(10*time.Millisecond),
+	)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }

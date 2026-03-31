@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/danceable/container/bind"
 	"github.com/danceable/container/resolve"
@@ -40,7 +41,7 @@ type Provider interface {
 
 	// Terminate terminates the provider, which is called before the application exits.
 	// This method is used to release resources or perform cleanup tasks.
-	Terminate() error
+	Terminate(ctx context.Context) error
 }
 
 // HasOrder is an optional interface that providers can implement to specify their execution order.
@@ -62,6 +63,9 @@ type Manager struct {
 	// container is the dependency injection container used to manage service instances.
 	container Container
 
+	// options holds the configuration
+	options *options
+
 	// sortedProvidersCache is a cache of sorted provider keys which specifies the order of execution.
 	sortedProvidersCache []int
 
@@ -74,6 +78,7 @@ func New(container Container) *Manager {
 	return &Manager{
 		providers: make(map[int][]Provider),
 		container: container,
+		options:   DefaultOptions(),
 	}
 }
 
@@ -93,7 +98,11 @@ func (m *Manager) Register(provider Provider) {
 }
 
 // Run executes the service provider manager, which involves booting all registered providers and handling their termination.
-func (m *Manager) Run(ctx context.Context) error {
+func (m *Manager) Run(ctx context.Context, opts ...Option) error {
+	for _, opt := range opts {
+		opt(m.options)
+	}
+
 	m.refreshSortedProvidersCache()
 
 	if err := m.register(ctx); err != nil {
@@ -104,14 +113,34 @@ func (m *Manager) Run(ctx context.Context) error {
 		return err
 	}
 
+	if m.options.Callback != nil {
+		go m.options.Callback(ctx, m.container)
+	}
+
 	// wait for a signal to terminate the providers.
 	<-ctx.Done()
 
-	if err := m.terminate(); err != nil {
-		return err
+	// wait for a grace period to allow providers to terminate gracefully.
+	time.Sleep(m.options.TerminationDelay)
+
+	terminationCtx, cancel := context.WithTimeout(context.Background(), m.options.TerminationDeadline)
+	defer cancel()
+
+	terminate := func() <-chan error {
+		ch := make(chan error)
+		go func() {
+			defer close(ch)
+			ch <- m.terminate(terminationCtx)
+		}()
+		return ch
 	}
 
-	return nil
+	select {
+	case <-terminationCtx.Done():
+		return terminationCtx.Err()
+	case err := <-terminate():
+		return err
+	}
 }
 
 func (m *Manager) register(ctx context.Context) error {
@@ -140,7 +169,7 @@ func (m *Manager) boot(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) terminate() error {
+func (m *Manager) terminate(ctx context.Context) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -150,7 +179,7 @@ func (m *Manager) terminate() error {
 		providers := m.providers[order]
 		for j := range slices.Backward(providers) {
 			provider := providers[j]
-			if err := provider.Terminate(); err != nil {
+			if err := provider.Terminate(ctx); err != nil {
 				return err
 			}
 		}

@@ -62,7 +62,7 @@ A provider is any type that implements the `Provider` interface:
 type Provider interface {
     Register(ctx context.Context, container Container) error
     Boot(ctx context.Context, container Container) error
-    Terminate() error
+    Terminate(ctx context.Context) error
 }
 ```
 
@@ -114,7 +114,7 @@ func (p *DatabaseProvider) Boot(ctx context.Context, c provider.Container) error
     return db.Connect()
 }
 
-func (p *DatabaseProvider) Terminate() error {
+func (p *DatabaseProvider) Terminate(ctx context.Context) error {
     // cleanup resources
     return nil
 }
@@ -171,7 +171,7 @@ func (p *DatabaseProvider) Order() int { return 1 }
 
 func (p *DatabaseProvider) Register(ctx context.Context, c provider.Container) error { /* ... */ }
 func (p *DatabaseProvider) Boot(ctx context.Context, c provider.Container) error     { /* ... */ }
-func (p *DatabaseProvider) Terminate() error                                         { /* ... */ }
+func (p *DatabaseProvider) Terminate(ctx context.Context) error                      { /* ... */ }
 
 type CacheProvider struct{}
 
@@ -179,7 +179,7 @@ func (p *CacheProvider) Order() int { return 2 }
 
 func (p *CacheProvider) Register(ctx context.Context, c provider.Container) error { /* ... */ }
 func (p *CacheProvider) Boot(ctx context.Context, c provider.Container) error     { /* ... */ }
-func (p *CacheProvider) Terminate() error                                         { /* ... */ }
+func (p *CacheProvider) Terminate(ctx context.Context) error                      { /* ... */ }
 ```
 
 With the above, the execution order is:
@@ -202,18 +202,41 @@ if err := provider.Run(ctx); err != nil {
 }
 ```
 
+#### Run Options
+
+`Run` accepts functional options to customize termination behavior and register
+a post-boot callback.
+
+| Option | Description |
+|--------|-------------|
+| `WithTerminationDelay(d time.Duration)` | Duration to wait before starting termination after the context is cancelled. Default: `300ms`. |
+| `WithTerminationDeadline(d time.Duration)` | Maximum duration allowed for all providers to terminate. Default: `200ms`. |
+| `WithCallback(fn func(ctx context.Context, container Container))` | Function called (in a goroutine) after all providers have booted but before waiting for the context to be cancelled. Receives both the context and the container. |
+
+```go
+if err := provider.Run(ctx,
+    provider.WithTerminationDelay(1*time.Second),
+    provider.WithTerminationDeadline(10*time.Second),
+    provider.WithCallback(func(ctx context.Context, c provider.Container) {
+        log.Println("all providers booted")
+    }),
+); err != nil {
+    log.Fatal(err)
+}
+```
+
 #### Manager Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | New | `New(container Container) *Manager` | Creates a new manager instance with the given container. |
 | Register | `Register(provider Provider)` | Registers a service provider with the manager. |
-| Run | `Run(ctx context.Context) error` | Runs the full lifecycle: register → boot → wait for context cancellation → terminate. |
+| Run | `Run(ctx context.Context, opts ...Option) error` | Runs the full lifecycle: register → boot → wait for context cancellation → terminate. |
 
 #### Interfaces
 
 | Interface | Methods | Description |
 |-----------|---------|-------------|
 | Container | `Reset()`, `Bind(...)`, `Call(...)`, `Resolve(...)`, `Fill(...)` | Dependency injection container used by providers to register and resolve bindings. |
-| Provider | `Register(ctx, container)`, `Boot(ctx, container)`, `Terminate()` | Service provider that participates in the managed lifecycle. |
+| Provider | `Register(ctx, container)`, `Boot(ctx, container)`, `Terminate(ctx)` | Service provider that participates in the managed lifecycle. |
 | HasOrder | `Order() int` | Optional interface for providers to specify execution priority. Lower values execute first. |

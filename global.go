@@ -15,6 +15,6 @@ func Register(provider Provider) {
 }
 
 // Run calls the Run method of the default service provider manager.
-func Run(ctx context.Context) error {
-	return Default.Run(ctx)
+func Run(ctx context.Context, opts ...Option) error {
+	return Default.Run(ctx, opts...)
 }
