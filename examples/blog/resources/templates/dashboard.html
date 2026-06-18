@@ -1,0 +1,38 @@
+{{define "title"}}Dashboard — Blog{{end}}
+{{define "content"}}
+<h1>Dashboard</h1>
+<div class="toolbar">
+  <a class="btn" href="/dashboard/articles/new">+ New article</a>
+</div>
+<table>
+  <thead>
+    <tr><th>Title</th><th>Created</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {{range .Page.Articles}}
+    <tr>
+      <td><a href="/articles/{{.ID}}">{{.Title}}</a></td>
+      <td><time>{{.CreatedAt.Format "Jan 2, 2006 15:04"}}</time></td>
+      <td class="actions">
+        <a class="btn secondary" href="/dashboard/articles/{{.ID}}/edit">Edit</a>
+        <form class="inline" method="post" action="/dashboard/articles/{{.ID}}/delete"
+              onsubmit="return confirm('Delete this article?');">
+          <button class="btn danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="3">No articles yet.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{if gt .Page.TotalPages 0}}
+<nav class="pagination">
+  {{if .Page.HasPrev}}<a class="btn secondary" href="/dashboard?page={{dec .Page.Page}}">← Previous</a>{{end}}
+  <span class="spacer"></span>
+  <span>Page {{.Page.Page}} of {{.Page.TotalPages}}</span>
+  <span class="spacer"></span>
+  {{if .Page.HasNext}}<a class="btn secondary" href="/dashboard?page={{inc .Page.Page}}">Next →</a>{{end}}
+</nav>
+{{end}}
+{{end}}

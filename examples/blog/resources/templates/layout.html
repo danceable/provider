@@ -1,0 +1,51 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{block "title" .}}Blog{{end}}</title>
+  <style>
+    :root { --fg:#1a1a1a; --muted:#6b7280; --accent:#2563eb; --border:#e5e7eb; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; color: var(--fg);
+           max-width: 760px; margin: 0 auto; padding: 1.5rem; line-height: 1.6; }
+    header.site { display:flex; justify-content:space-between; align-items:center;
+           border-bottom:1px solid var(--border); padding-bottom:1rem; margin-bottom:1.5rem; }
+    header.site a { text-decoration:none; color:var(--fg); }
+    header.site nav a { margin-left:1rem; color:var(--accent); }
+    h1 { margin-top:0; }
+    a { color: var(--accent); }
+    article.card { border-bottom:1px solid var(--border); padding:1rem 0; }
+    article.card h2 { margin:0 0 .25rem; }
+    time { color: var(--muted); font-size:.85rem; }
+    .body { white-space: pre-wrap; }
+    nav.pagination { display:flex; gap:1rem; align-items:center; margin-top:1.5rem; }
+    nav.pagination .spacer { flex:1; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { text-align:left; padding:.5rem; border-bottom:1px solid var(--border); }
+    .actions a, .actions button { margin-right:.5rem; }
+    form.inline { display:inline; }
+    label { display:block; margin-top:1rem; font-weight:600; }
+    input[type=text], textarea { width:100%; padding:.5rem; margin-top:.25rem;
+           border:1px solid var(--border); border-radius:4px; font:inherit; }
+    textarea { min-height:200px; }
+    .btn { display:inline-block; background:var(--accent); color:#fff; border:0;
+           padding:.5rem .9rem; border-radius:4px; cursor:pointer; text-decoration:none; font:inherit; }
+    .btn.secondary { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+    .btn.danger { background:#dc2626; }
+    .error { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;
+             padding:.6rem .8rem; border-radius:4px; margin-top:1rem; }
+    .toolbar { margin-bottom:1rem; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <a href="/"><strong>📝 Blog</strong></a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+    </nav>
+  </header>
+  <main>{{block "content" .}}{{end}}</main>
+</body>
+</html>{{end}}

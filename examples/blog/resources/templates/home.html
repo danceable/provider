@@ -1,0 +1,22 @@
+{{define "title"}}Blog — Home{{end}}
+{{define "content"}}
+<h1>Latest articles</h1>
+{{range .Page.Articles}}
+  <article class="card">
+    <h2><a href="/articles/{{.ID}}">{{.Title}}</a></h2>
+    <time>{{.CreatedAt.Format "Jan 2, 2006 15:04"}}</time>
+    <p>{{.Body | truncate 200}}</p>
+  </article>
+{{else}}
+  <p>No articles yet. Head to the <a href="/dashboard">dashboard</a> to write one.</p>
+{{end}}
+{{if gt .Page.TotalPages 0}}
+<nav class="pagination">
+  {{if .Page.HasPrev}}<a class="btn secondary" href="/?page={{dec .Page.Page}}">← Previous</a>{{end}}
+  <span class="spacer"></span>
+  <span>Page {{.Page.Page}} of {{.Page.TotalPages}}</span>
+  <span class="spacer"></span>
+  {{if .Page.HasNext}}<a class="btn secondary" href="/?page={{inc .Page.Page}}">Next →</a>{{end}}
+</nav>
+{{end}}
+{{end}}

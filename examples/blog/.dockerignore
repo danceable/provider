@@ -1,0 +1,4 @@
+# Keep the Docker build context small.
+*.md
+.env
+blog

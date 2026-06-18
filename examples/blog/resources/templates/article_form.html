@@ -1,0 +1,17 @@
+{{define "title"}}{{if .Article.ID}}Edit article{{else}}New article{{end}} — Blog{{end}}
+{{define "content"}}
+<h1>{{if .Article.ID}}Edit article{{else}}New article{{end}}</h1>
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+<form method="post" action="{{.Action}}">
+  <label for="title">Title</label>
+  <input type="text" id="title" name="title" value="{{.Article.Title}}" required>
+
+  <label for="body">Body</label>
+  <textarea id="body" name="body" required>{{.Article.Body}}</textarea>
+
+  <p>
+    <button class="btn" type="submit">Save</button>
+    <a class="btn secondary" href="/dashboard">Cancel</a>
+  </p>
+</form>
+{{end}}
