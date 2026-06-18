@@ -7,7 +7,7 @@ import (
 )
 
 // Default is the default concrete of the service provider manager.
-var Default = New(container.Default)
+var Default = New(newAdapter(container.Default))
 
 // Register calls the Register method of the default service provider manager.
 func Register(provider Provider) {

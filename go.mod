@@ -2,9 +2,9 @@ module github.com/danceable/provider
 
 go 1.26
 
-require github.com/danceable/container v1.0.0
+require github.com/danceable/container v1.1.0
 
-require github.com/stretchr/objx v0.5.2 // indirect
+require github.com/stretchr/objx v0.5.3 // indirect
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

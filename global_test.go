@@ -10,8 +10,6 @@ import (
 )
 
 func TestGlobal_Register(t *testing.T) {
-	t.Parallel()
-
 	original := provider.Default
 	defer func() { provider.Default = original }()
 
@@ -29,8 +27,6 @@ func TestGlobal_Register(t *testing.T) {
 }
 
 func TestGlobal_Run(t *testing.T) {
-	t.Parallel()
-
 	original := provider.Default
 	defer func() { provider.Default = original }()
 

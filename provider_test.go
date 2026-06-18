@@ -35,6 +35,14 @@ func (m *containerMock) Fill(r any, opts ...resolve.ResolveOption) error {
 	return m.Called(r, opts).Error(0)
 }
 
+func (m *containerMock) Scope(name string) provider.Container {
+	return m.Called(name).Get(0).(provider.Container)
+}
+
+func (m *containerMock) Derive() provider.Container {
+	return m.Called().Get(0).(provider.Container)
+}
+
 type providerMock struct {
 	mock.Mock
 }

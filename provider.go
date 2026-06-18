@@ -27,6 +27,12 @@ type Container interface {
 
 	// Fill calls the same method of the default concrete.
 	Fill(receiver any, opts ...resolve.ResolveOption) error
+
+	// Scope creates a new child container with the given name, which can be used to manage scoped dependencies.
+	Scope(name string) Container
+
+	// Derive creates a new child container that inherits the binding of the parent container.
+	Derive() Container
 }
 
 // Provider defines the interface for a service provider.
