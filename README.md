@@ -19,6 +19,7 @@ Features:
 - Three-phase lifecycle: Register → Boot → Terminate
 - Ordered execution via the optional `HasOrder` interface
 - Reverse-order termination for clean shutdown
+- Scoped providers that run per request/job inside a child container seeded with `WithValue`
 - Global instance for small applications
 - Concurrency-safe with no race conditions
 - Works with any `Container` implementation (e.g. [danceable/container](https://github.com/danceable/container))
@@ -225,18 +226,103 @@ if err := provider.Run(ctx,
 }
 ```
 
+#### Scoped Providers
+
+Some providers should not live for the whole application — they belong to a
+single request, job, or transaction. Mark these by implementing the optional
+`HasScope` interface (`Scoped() bool`) and returning `true`; `Register` then
+routes them to the scoped set automatically. Scoped providers are skipped by
+`Run` and instead executed each time you open a scope, against a **child
+container** derived from the manager's container.
+
+```go
+type RequestContextProvider struct{}
+
+func (p *RequestContextProvider) Scoped() bool { return true }
+
+func (p *RequestContextProvider) Register(ctx context.Context, c provider.Container) error { /* ... */ }
+func (p *RequestContextProvider) Boot(ctx context.Context, c provider.Container) error     { /* ... */ }
+func (p *RequestContextProvider) Terminate(ctx context.Context) error                      { /* ... */ }
+```
+
+Open a scope with `Scope(ctx, opts...)`. By default the scope is **anonymous and
+ephemeral** — backed by `container.Derive`, it is garbage-collected once you drop
+the returned `*Scope`, which is ideal per request/job. `WithValue(name, value)`
+options seed the child before the scoped providers' `Register` then `Boot` run.
+The returned `*Scope` exposes the child via `Container()`; you own its lifetime
+and must call `Terminate` when the scope ends (scoped providers terminate in
+reverse order, just like `Run`).
+
+```go
+m.Register(&RequestContextProvider{}) // routed to the scoped set via Scoped()
+
+// Open a scope for one HTTP request, seeding request-specific values.
+scope, err := m.Scope(r.Context(),
+    provider.WithValue("requestID", reqID),
+    provider.WithValue("user", currentUser),
+)
+if err != nil {
+    return err
+}
+defer scope.Terminate(r.Context())
+
+// Resolve a seeded value (bound as a named singleton).
+var user *User
+if err := scope.Container().Resolve(&user, resolve.WithName("user")); err != nil {
+    return err
+}
+```
+
+Two options change the scope's lifetime:
+
+- `WithPersistent(name)` makes the scope a **named, persistent** child
+  (`container.Scope`) instead of an ephemeral one. The named child is cached on
+  its parent and reused by later calls with the same name.
+- `WithAutoTermination()` ties teardown to the context: the scope terminates
+  itself once `ctx` is cancelled, so you don't have to call `Terminate`.
+  Termination still runs exactly once, so combining it with an explicit
+  `Terminate` is safe.
+
+```go
+// A persistent scope that cleans itself up when ctx is cancelled.
+scope, err := m.Scope(ctx,
+    provider.WithPersistent("worker"),
+    provider.WithAutoTermination(),
+    provider.WithValue("jobID", jobID),
+)
+```
+
+> `Scope` is a method on `*Manager`; reach the global instance via
+> `provider.Default.Scope(...)`.
+
 #### Manager Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | New | `New(container Container) *Manager` | Creates a new manager instance with the given container. |
-| Register | `Register(provider Provider)` | Registers a service provider with the manager. |
+| Register | `Register(provider Provider)` | Registers a service provider. Providers implementing `HasScope` and returning `true` are stored as scoped providers; all others run at global boot. |
 | Run | `Run(ctx context.Context, opts ...Option) error` | Runs the full lifecycle: register → boot → wait for context cancellation → terminate. |
+| Scope | `Scope(ctx, opts ...ScopeOption) (*Scope, error)` | Opens a scoped instance (ephemeral by default; see options) and returns a handle the caller must `Terminate` unless `WithAutoTermination` is set. |
+
+#### Scope Options
+
+| Option | Description |
+|--------|-------------|
+| `WithValue(name string, value any)` | Seeds the scoped container with `value`, bound as a named singleton and resolvable via `resolve.WithName(name)`. A nil value returns `ErrNilScopeValue`. |
+| `WithPersistent(name string)` | Makes the scope a named, persistent child (`container.Scope`) instead of the default ephemeral one (`container.Derive`). |
+| `WithAutoTermination()` | Terminates the scope automatically once the context passed to `Scope` is cancelled. Teardown runs exactly once. |
 
 #### Interfaces
 
 | Interface | Methods | Description |
 |-----------|---------|-------------|
-| Container | `Reset()`, `Bind(...)`, `Call(...)`, `Resolve(...)`, `Fill(...)` | Dependency injection container used by providers to register and resolve bindings. |
+| Container | `Reset()`, `Bind(...)`, `Call(...)`, `Resolve(...)`, `Fill(...)`, `Scope(name)`, `Derive()` | Dependency injection container used by providers to register and resolve bindings. |
 | Provider | `Register(ctx, container)`, `Boot(ctx, container)`, `Terminate(ctx)` | Service provider that participates in the managed lifecycle. |
 | HasOrder | `Order() int` | Optional interface for providers to specify execution priority. Lower values execute first. |
+| HasScope | `Scoped() bool` | Optional interface for providers to opt into scoped execution. Returning `true` makes `Register` store the provider as scoped. |
+
+The handle returned by `Scope` is a concrete `*Scope`:
+
+| Type | Methods | Description |
+|------|---------|-------------|
+| Scope | `Name() string`, `Container() Container`, `Terminate(ctx) error` | A live scoped instance: the child container plus its booted scoped providers. |

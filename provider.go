@@ -61,10 +61,23 @@ type HasOrder interface {
 	Order() int
 }
 
+// HasScope is an optional interface that providers can implement to opt into
+// scoped execution. When Register receives a provider whose Scoped method
+// returns true, the provider is run per-scope (by Scope/Derive against a child
+// container) instead of at global boot.
+type HasScope interface {
+
+	// Scoped reports whether the provider should be registered as a scoped provider.
+	Scoped() bool
+}
+
 // Manager manages the lifecycle of service providers, including their registration, booting, and termination.
 type Manager struct {
 	// providers holds the registered service providers.
 	providers map[int][]Provider
+
+	// scopedProviders holds the providers that run per-scope instead of at global boot.
+	scopedProviders map[int][]Provider
 
 	// container is the dependency injection container used to manage service instances.
 	container Container
@@ -82,25 +95,33 @@ type Manager struct {
 // New creates a new instance of the service provider manager with the given container.
 func New(container Container) *Manager {
 	return &Manager{
-		providers: make(map[int][]Provider),
-		container: container,
-		options:   DefaultOptions(),
+		providers:       make(map[int][]Provider),
+		scopedProviders: make(map[int][]Provider),
+		container:       container,
+		options:         DefaultOptions(),
 	}
 }
 
 // Register registers a service provider with the service provider manager.
+// Providers that implement HasScope and return true are stored as scoped
+// providers (run per-scope); all others run at global boot.
 func (m *Manager) Register(provider Provider) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	target := m.providers
+	if hasScope, ok := provider.(HasScope); ok && hasScope.Scoped() {
+		target = m.scopedProviders
+	}
+
 	if hasOrder, ok := provider.(HasOrder); ok {
 		order := hasOrder.Order()
-		m.providers[order] = append(m.providers[order], provider)
+		target[order] = append(target[order], provider)
 
 		return
 	}
 
-	m.providers[len(m.providers)] = append(m.providers[len(m.providers)], provider)
+	target[len(target)] = append(target[len(target)], provider)
 }
 
 // Run executes the service provider manager, which involves booting all registered providers and handling their termination.
