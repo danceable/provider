@@ -28,6 +28,8 @@ func main() {
 	defer stop()
 
 	provider.Register(blogprovider.NewConfigProvider())
+	provider.Register(blogprovider.NewI18nProvider())
+	provider.Register(blogprovider.NewTranslatorProvider())
 	provider.Register(blogprovider.NewMongoProvider())
 	provider.Register(blogprovider.NewArticleProvider())
 	provider.Register(blogprovider.NewHTTPProvider())

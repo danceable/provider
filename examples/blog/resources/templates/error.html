@@ -1,6 +1,6 @@
-{{define "title"}}{{.Status}} — Blog{{end}}
+{{define "title"}}{{.Status}} — {{ t "app.name" }}{{end}}
 {{define "content"}}
 <h1>{{.Status}}</h1>
 <p>{{.Message}}</p>
-<p><a href="/">← Back home</a></p>
+<p><a href="/">← {{ t "error.back_home" }}</a></p>
 {{end}}

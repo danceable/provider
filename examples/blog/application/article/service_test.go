@@ -6,7 +6,7 @@ import (
 
 	app "github.com/danceable/provider/examples/blog/application/article"
 	domain "github.com/danceable/provider/examples/blog/domain/article"
-	"github.com/danceable/provider/examples/blog/infrastructure/memory"
+	"github.com/danceable/provider/examples/blog/infrastructure/repositories/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -1,12 +1,12 @@
-{{define "title"}}Dashboard — Blog{{end}}
+{{define "title"}}{{ t "nav.dashboard" }} — {{ t "app.name" }}{{end}}
 {{define "content"}}
-<h1>Dashboard</h1>
+<h1>{{ t "nav.dashboard" }}</h1>
 <div class="toolbar">
-  <a class="btn" href="/dashboard/articles/new">+ New article</a>
+  <a class="btn" href="/dashboard/articles/new">+ {{ t "dashboard.new" }}</a>
 </div>
 <table>
   <thead>
-    <tr><th>Title</th><th>Created</th><th>Actions</th></tr>
+    <tr><th>{{ t "field.title" }}</th><th>{{ t "field.created" }}</th><th>{{ t "field.actions" }}</th></tr>
   </thead>
   <tbody>
     {{range .Page.Articles}}
@@ -14,25 +14,25 @@
       <td><a href="/articles/{{.ID}}">{{.Title}}</a></td>
       <td><time>{{.CreatedAt.Format "Jan 2, 2006 15:04"}}</time></td>
       <td class="actions">
-        <a class="btn secondary" href="/dashboard/articles/{{.ID}}/edit">Edit</a>
+        <a class="btn secondary" href="/dashboard/articles/{{.ID}}/edit">{{ t "action.edit" }}</a>
         <form class="inline" method="post" action="/dashboard/articles/{{.ID}}/delete"
-              onsubmit="return confirm('Delete this article?');">
-          <button class="btn danger" type="submit">Delete</button>
+              onsubmit="return confirm('{{ t "dashboard.confirm_delete" }}');">
+          <button class="btn danger" type="submit">{{ t "action.delete" }}</button>
         </form>
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="3">No articles yet.</td></tr>
+    <tr><td colspan="3">{{ t "dashboard.empty" }}</td></tr>
     {{end}}
   </tbody>
 </table>
 {{if gt .Page.TotalPages 0}}
 <nav class="pagination">
-  {{if .Page.HasPrev}}<a class="btn secondary" href="/dashboard?page={{dec .Page.Page}}">← Previous</a>{{end}}
+  {{if .Page.HasPrev}}<a class="btn secondary" href="/dashboard?page={{dec .Page.Page}}">← {{ t "pagination.previous" }}</a>{{end}}
   <span class="spacer"></span>
-  <span>Page {{.Page.Page}} of {{.Page.TotalPages}}</span>
+  <span>{{ t "pagination.page" }} {{.Page.Page}} {{ t "pagination.of" }} {{.Page.TotalPages}}</span>
   <span class="spacer"></span>
-  {{if .Page.HasNext}}<a class="btn secondary" href="/dashboard?page={{inc .Page.Page}}">Next →</a>{{end}}
+  {{if .Page.HasNext}}<a class="btn secondary" href="/dashboard?page={{inc .Page.Page}}">{{ t "pagination.next" }} →</a>{{end}}
 </nav>
 {{end}}
 {{end}}

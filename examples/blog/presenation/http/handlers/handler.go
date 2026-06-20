@@ -1,7 +1,7 @@
-// Package http is the presentation layer: it turns HTTP requests into use-case
-// calls and renders the results as HTML. It depends on the application layer
-// only, never on the repositories directly.
-package http
+// Package handlers is the presentation layer: it turns HTTP requests into
+// use-case calls and renders the results as HTML. It depends on the application
+// layer only, never on the repositories directly.
+package handlers
 
 import (
 	"errors"
@@ -27,7 +27,9 @@ type (
 	formView    struct {
 		Action  string
 		Article *domain.Article
-		Error   string
+		// ErrorKey is a translation key for the validation message, so the
+		// template renders it in the request's language via {{ t }}.
+		ErrorKey string
 	}
 	errorView struct {
 		Status  int
@@ -35,15 +37,29 @@ type (
 	}
 )
 
-// renderError renders the shared error page.
-func (b base) renderError(w http.ResponseWriter, status int, message string) {
-	b.renderer.Render(w, "error.html", status, errorView{Status: status, Message: message})
+// renderError renders the shared error page in the request's language.
+func (b base) renderError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	b.renderer.Render(w, r, "error.html", status, errorView{Status: status, Message: message})
 }
 
 // isValidation reports whether err is a domain validation error, which the UI
 // surfaces back to the user on the form rather than as a 500.
 func isValidation(err error) bool {
 	return errors.Is(err, domain.ErrEmptyTitle) || errors.Is(err, domain.ErrEmptyBody)
+}
+
+// validationKey maps a domain validation error to its translation key, so the
+// form template can render the message in the request's language. It is only
+// called for errors isValidation has already accepted.
+func validationKey(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrEmptyTitle):
+		return "error.empty_title"
+	case errors.Is(err, domain.ErrEmptyBody):
+		return "error.empty_body"
+	default:
+		return "error.invalid"
+	}
 }
 
 // pageParam reads the 1-based ?page query parameter, defaulting to 1.

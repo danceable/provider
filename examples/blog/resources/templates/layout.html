@@ -1,9 +1,9 @@
 {{define "layout"}}<!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}" dir="{{ dir }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{block "title" .}}Blog{{end}}</title>
+  <title>{{block "title" .}}{{ t "app.name" }}{{end}}</title>
   <style>
     :root { --fg:#1a1a1a; --muted:#6b7280; --accent:#2563eb; --border:#e5e7eb; }
     * { box-sizing: border-box; }
@@ -12,6 +12,7 @@
     header.site { display:flex; justify-content:space-between; align-items:center;
            border-bottom:1px solid var(--border); padding-bottom:1rem; margin-bottom:1.5rem; }
     header.site a { text-decoration:none; color:var(--fg); }
+    header.site nav { display:flex; align-items:center; }
     header.site nav a { margin-left:1rem; color:var(--accent); }
     h1 { margin-top:0; }
     a { color: var(--accent); }
@@ -36,14 +37,22 @@
     .error { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;
              padding:.6rem .8rem; border-radius:4px; margin-top:1rem; }
     .toolbar { margin-bottom:1rem; }
+    nav .langs { display:flex; align-items:center; margin:0 0 0 1rem; }
+    nav .langs select { font:inherit; font-size:.85rem; padding:.2rem .4rem;
+           border:1px solid var(--border); border-radius:4px; background:#fff; color:var(--fg); cursor:pointer; }
   </style>
 </head>
 <body>
   <header class="site">
-    <a href="/"><strong>📝 Blog</strong></a>
+    <a href="/"><strong>📝 {{ t "app.name" }}</strong></a>
     <nav>
-      <a href="/">Home</a>
-      <a href="/dashboard">Dashboard</a>
+      <a href="/">{{ t "nav.home" }}</a>
+      <a href="/dashboard">{{ t "nav.dashboard" }}</a>
+      <form class="langs" method="get">
+        <select name="lang" aria-label="{{ t "nav.language" }}" onchange="this.form.submit()">
+          {{ $current := lang }}{{ range languages }}<option value="{{ . }}"{{ if eq (printf "%s" .) $current }} selected{{ end }}>{{ native . }}</option>{{ end }}
+        </select>
+      </form>
     </nav>
   </header>
   <main>{{block "content" .}}{{end}}</main>

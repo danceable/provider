@@ -170,6 +170,71 @@ func (m *Manager) Run(ctx context.Context, opts ...Option) error {
 	}
 }
 
+// Scope opens a scoped instance of the container and runs the manager's scoped
+// providers against it. By default the scope is anonymous and ephemeral
+// (container.Derive), becoming eligible for garbage collection once the caller
+// drops the returned Scope; WithPersistent makes it a named, persistent child
+// instead. Any WithValue options seed the child before the scoped providers'
+// Register then Boot. The caller owns the returned Scope and must Terminate it
+// when the scope ends, unless WithAutoTermination ties teardown to ctx.
+//
+// On any error the scope is not returned; matching the manager's global Run,
+// already-booted providers are not terminated here.
+func (m *Manager) Scope(ctx context.Context, opts ...ScopeOption) (*Scope, error) {
+	config := &scopeConfig{}
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	var (
+		name      string
+		container Container
+	)
+	if config.persistent {
+		name = config.name
+		container = m.container.Scope(name)
+	} else {
+		container = m.container.Derive()
+	}
+
+	for _, v := range config.values {
+		if err := bindValue(container, v.name, v.value); err != nil {
+			return nil, err
+		}
+	}
+
+	sorted, providers := m.snapshotScopedProviders()
+	scope := &Scope{
+		name:      name,
+		container: container,
+		sorted:    sorted,
+		providers: providers,
+		done:      make(chan struct{}),
+	}
+
+	for _, order := range scope.sorted {
+		for _, provider := range scope.providers[order] {
+			if err := provider.Register(ctx, container); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	for _, order := range scope.sorted {
+		for _, provider := range scope.providers[order] {
+			if err := provider.Boot(ctx, container); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if config.autoTerminate {
+		go scope.watch(ctx)
+	}
+
+	return scope, nil
+}
+
 func (m *Manager) register(ctx context.Context) error {
 	for _, order := range m.sortedProvidersCache {
 		providers := m.providers[order]
@@ -220,4 +285,19 @@ func (m *Manager) refreshSortedProvidersCache() {
 	defer m.mu.Unlock()
 
 	m.sortedProvidersCache = slices.Sorted(maps.Keys(m.providers))
+}
+
+// snapshotScopedProviders returns, under a single lock, the scoped provider
+// orders (lowest first) and a copy of the scoped providers map. The copy keeps
+// a live scope unaffected by concurrent Register calls.
+func (m *Manager) snapshotScopedProviders() ([]int, map[int][]Provider) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	providers := make(map[int][]Provider, len(m.scopedProviders))
+	for order, ps := range m.scopedProviders {
+		providers[order] = slices.Clone(ps)
+	}
+
+	return slices.Sorted(maps.Keys(m.scopedProviders)), providers
 }

@@ -1,4 +1,4 @@
-package http
+package handlers
 
 import (
 	"errors"
@@ -23,11 +23,11 @@ func NewPublic(svc *app.Service, renderer *render.Renderer, perPage int) *Public
 func (h *PublicHandler) Home(w http.ResponseWriter, r *http.Request) {
 	page, err := h.svc.List(r.Context(), pageParam(r), h.perPage)
 	if err != nil {
-		h.renderError(w, http.StatusInternalServerError, "could not load articles")
+		h.renderError(w, r, http.StatusInternalServerError, "could not load articles")
 		return
 	}
 
-	h.renderer.Render(w, "home.html", http.StatusOK, listView{Page: page})
+	h.renderer.Render(w, r, "home.html", http.StatusOK, listView{Page: page})
 }
 
 // Show renders a single article's detail page.
@@ -35,10 +35,10 @@ func (h *PublicHandler) Show(w http.ResponseWriter, r *http.Request) {
 	a, err := h.svc.Get(r.Context(), r.PathValue("id"))
 	switch {
 	case err == nil:
-		h.renderer.Render(w, "article.html", http.StatusOK, articleView{Article: a})
+		h.renderer.Render(w, r, "article.html", http.StatusOK, articleView{Article: a})
 	case errors.Is(err, domain.ErrNotFound):
-		h.renderError(w, http.StatusNotFound, "article not found")
+		h.renderError(w, r, http.StatusNotFound, "article not found")
 	default:
-		h.renderError(w, http.StatusInternalServerError, "could not load article")
+		h.renderError(w, r, http.StatusInternalServerError, "could not load article")
 	}
 }

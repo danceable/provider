@@ -11,8 +11,10 @@ import (
 	"github.com/danceable/provider"
 	app "github.com/danceable/provider/examples/blog/application/article"
 	"github.com/danceable/provider/examples/blog/infrastructure/config"
+	"github.com/danceable/provider/examples/blog/infrastructure/i18n"
 	"github.com/danceable/provider/examples/blog/infrastructure/render"
-	bloghttp "github.com/danceable/provider/examples/blog/presenation/http"
+	"github.com/danceable/provider/examples/blog/presenation/http/handlers"
+	"github.com/danceable/provider/examples/blog/presenation/http/middlewares"
 )
 
 // HTTPProvider builds the HTTP server from the article service and runs it. It
@@ -30,10 +32,10 @@ func NewHTTPProvider() *HTTPProvider { return &HTTPProvider{} }
 func (p *HTTPProvider) Order() int { return 30 }
 
 // Register binds *http.Server, assembling the HTTP handler from the resolved
-// application service and configuration.
+// application service, configuration and internationalization dependencies.
 func (p *HTTPProvider) Register(_ context.Context, c provider.Container) error {
-	return c.Bind(func(svc *app.Service, cfg *config.Config) (*http.Server, error) {
-		handler, err := NewServer(svc, cfg.PerPage)
+	return c.Bind(func(svc *app.Service, cfg *config.Config, repo i18n.Repository, scoper middlewares.Scoper) (*http.Server, error) {
+		handler, err := NewServer(svc, cfg.PerPage, scoper, i18n.NewTranslator(repo, i18n.Default))
 		if err != nil {
 			return nil, err
 		}
@@ -76,15 +78,19 @@ func (p *HTTPProvider) Terminate(ctx context.Context) error {
 
 // NewServer assembles the blog's HTTP handler: it builds the public and
 // dashboard handlers from the application service over a shared renderer,
-// registers the routes and wraps the mux with the request logger.
-func NewServer(svc *app.Service, perPage int) (http.Handler, error) {
-	renderer, err := render.New()
+// registers the routes, wraps the mux with the per-request i18n middleware (so
+// every page renders in the visitor's language) and the request logger.
+//
+// defaultT is the renderer's fallback translator, used only when a request
+// carries none; scoper lets the i18n middleware open a request scope per call.
+func NewServer(svc *app.Service, perPage int, scoper middlewares.Scoper, defaultT *i18n.Translator) (http.Handler, error) {
+	renderer, err := render.New(defaultT)
 	if err != nil {
 		return nil, err
 	}
 
-	public := bloghttp.NewPublic(svc, renderer, perPage)
-	dashboard := bloghttp.NewDashboard(svc, renderer, perPage)
+	public := handlers.NewPublic(svc, renderer, perPage)
+	dashboard := handlers.NewDashboard(svc, renderer, perPage)
 
 	mux := http.NewServeMux()
 
@@ -101,7 +107,7 @@ func NewServer(svc *app.Service, perPage int) (http.Handler, error) {
 	mux.HandleFunc("POST /dashboard/articles/{id}", dashboard.Update)
 	mux.HandleFunc("POST /dashboard/articles/{id}/delete", dashboard.Delete)
 
-	return logging(mux), nil
+	return logging(middlewares.WithI18n(scoper, mux)), nil
 }
 
 // logging is a tiny request logger so the example shows traffic on stdout.

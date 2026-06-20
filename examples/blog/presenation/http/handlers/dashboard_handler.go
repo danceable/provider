@@ -1,4 +1,4 @@
-package http
+package handlers
 
 import (
 	"errors"
@@ -23,16 +23,16 @@ func NewDashboard(svc *app.Service, renderer *render.Renderer, perPage int) *Das
 func (h *DashboardHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	page, err := h.svc.List(r.Context(), pageParam(r), h.perPage)
 	if err != nil {
-		h.renderError(w, http.StatusInternalServerError, "could not load articles")
+		h.renderError(w, r, http.StatusInternalServerError, "could not load articles")
 		return
 	}
 
-	h.renderer.Render(w, "dashboard.html", http.StatusOK, listView{Page: page})
+	h.renderer.Render(w, r, "dashboard.html", http.StatusOK, listView{Page: page})
 }
 
 // NewForm renders the empty create-article form.
 func (h *DashboardHandler) NewForm(w http.ResponseWriter, r *http.Request) {
-	h.renderer.Render(w, "article_form.html", http.StatusOK, formView{
+	h.renderer.Render(w, r, "article_form.html", http.StatusOK, formView{
 		Action:  "/dashboard/articles",
 		Article: &domain.Article{},
 	})
@@ -47,13 +47,13 @@ func (h *DashboardHandler) Create(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 	case isValidation(err):
-		h.renderer.Render(w, "article_form.html", http.StatusUnprocessableEntity, formView{
-			Action:  "/dashboard/articles",
-			Article: &domain.Article{Title: title, Body: body},
-			Error:   err.Error(),
+		h.renderer.Render(w, r, "article_form.html", http.StatusUnprocessableEntity, formView{
+			Action:   "/dashboard/articles",
+			Article:  &domain.Article{Title: title, Body: body},
+			ErrorKey: validationKey(err),
 		})
 	default:
-		h.renderError(w, http.StatusInternalServerError, "could not create article")
+		h.renderError(w, r, http.StatusInternalServerError, "could not create article")
 	}
 }
 
@@ -64,14 +64,14 @@ func (h *DashboardHandler) EditForm(w http.ResponseWriter, r *http.Request) {
 	a, err := h.svc.Get(r.Context(), id)
 	switch {
 	case err == nil:
-		h.renderer.Render(w, "article_form.html", http.StatusOK, formView{
+		h.renderer.Render(w, r, "article_form.html", http.StatusOK, formView{
 			Action:  "/dashboard/articles/" + id,
 			Article: a,
 		})
 	case errors.Is(err, domain.ErrNotFound):
-		h.renderError(w, http.StatusNotFound, "article not found")
+		h.renderError(w, r, http.StatusNotFound, "article not found")
 	default:
-		h.renderError(w, http.StatusInternalServerError, "could not load article")
+		h.renderError(w, r, http.StatusInternalServerError, "could not load article")
 	}
 }
 
@@ -85,15 +85,15 @@ func (h *DashboardHandler) Update(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 	case errors.Is(err, domain.ErrNotFound):
-		h.renderError(w, http.StatusNotFound, "article not found")
+		h.renderError(w, r, http.StatusNotFound, "article not found")
 	case isValidation(err):
-		h.renderer.Render(w, "article_form.html", http.StatusUnprocessableEntity, formView{
-			Action:  "/dashboard/articles/" + id,
-			Article: &domain.Article{ID: id, Title: title, Body: body},
-			Error:   err.Error(),
+		h.renderer.Render(w, r, "article_form.html", http.StatusUnprocessableEntity, formView{
+			Action:   "/dashboard/articles/" + id,
+			Article:  &domain.Article{ID: id, Title: title, Body: body},
+			ErrorKey: validationKey(err),
 		})
 	default:
-		h.renderError(w, http.StatusInternalServerError, "could not update article")
+		h.renderError(w, r, http.StatusInternalServerError, "could not update article")
 	}
 }
 
@@ -101,7 +101,7 @@ func (h *DashboardHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *DashboardHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.svc.Delete(r.Context(), r.PathValue("id"))
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		h.renderError(w, http.StatusInternalServerError, "could not delete article")
+		h.renderError(w, r, http.StatusInternalServerError, "could not delete article")
 		return
 	}
 

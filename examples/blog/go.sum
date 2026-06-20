@@ -1,7 +1,7 @@
 github.com/danceable/container v1.1.0 h1:nY4rE9xHL8DtypzuM3Ay/BhoKog9BzJ6oWHpaPXFrqg=
 github.com/danceable/container v1.1.0/go.mod h1:+5wmynju3CEE/hPWZb4n3QKty7WWGeN6GhB8WA3BIMQ=
-github.com/danceable/provider v1.0.0 h1:OHb90F6i26SA7Ww+Vx2XSW5r3loxqkWzoRnt08TVTqU=
-github.com/danceable/provider v1.0.0/go.mod h1:oOrkgS7KOi03lTa6yjB63WLVhvd+ZEPI3T3D9ENPNqg=
+github.com/danceable/provider v1.1.0 h1:rCxVNthgtD2K7j8KjpZ9poTUgWKIy7VSV8wbA0RaOjQ=
+github.com/danceable/provider v1.1.0/go.mod h1:oOrkgS7KOi03lTa6yjB63WLVhvd+ZEPI3T3D9ENPNqg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=

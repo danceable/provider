@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/danceable/container v1.1.0
-	github.com/danceable/provider v1.0.0
+	github.com/danceable/provider v1.1.0
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver/v2 v2.6.0
 )

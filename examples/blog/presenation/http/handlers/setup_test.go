@@ -1,4 +1,4 @@
-package http_test
+package handlers_test
 
 import (
 	"io"
@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	app "github.com/danceable/provider/examples/blog/application/article"
-	"github.com/danceable/provider/examples/blog/infrastructure/memory"
+	"github.com/danceable/provider/examples/blog/infrastructure/i18n"
 	"github.com/danceable/provider/examples/blog/infrastructure/render"
+	"github.com/danceable/provider/examples/blog/infrastructure/repositories/memory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,11 +18,19 @@ func newService() *app.Service {
 	return app.NewService(memory.NewArticleRepository())
 }
 
-// newRenderer compiles the templates the handlers render against.
+// englishTranslator builds a default English translator over the in-memory
+// translations, so handlers tested without the i18n middleware still render
+// real text rather than raw keys.
+func englishTranslator() *i18n.Translator {
+	return i18n.NewTranslator(memory.NewTranslationRepository(), i18n.English)
+}
+
+// newRenderer compiles the templates the handlers render against, defaulting to
+// English when a request carries no translator.
 func newRenderer(t *testing.T) *render.Renderer {
 	t.Helper()
 
-	renderer, err := render.New()
+	renderer, err := render.New(englishTranslator())
 	require.NoError(t, err)
 
 	return renderer

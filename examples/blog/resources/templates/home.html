@@ -1,6 +1,6 @@
-{{define "title"}}Blog — Home{{end}}
+{{define "title"}}{{ t "app.name" }} — {{ t "nav.home" }}{{end}}
 {{define "content"}}
-<h1>Latest articles</h1>
+<h1>{{ t "home.heading" }}</h1>
 {{range .Page.Articles}}
   <article class="card">
     <h2><a href="/articles/{{.ID}}">{{.Title}}</a></h2>
@@ -8,15 +8,15 @@
     <p>{{.Body | truncate 200}}</p>
   </article>
 {{else}}
-  <p>No articles yet. Head to the <a href="/dashboard">dashboard</a> to write one.</p>
+  <p>{{ t "home.empty" }} <a href="/dashboard">{{ t "home.empty_cta" }}</a></p>
 {{end}}
 {{if gt .Page.TotalPages 0}}
 <nav class="pagination">
-  {{if .Page.HasPrev}}<a class="btn secondary" href="/?page={{dec .Page.Page}}">← Previous</a>{{end}}
+  {{if .Page.HasPrev}}<a class="btn secondary" href="/?page={{dec .Page.Page}}">← {{ t "pagination.previous" }}</a>{{end}}
   <span class="spacer"></span>
-  <span>Page {{.Page.Page}} of {{.Page.TotalPages}}</span>
+  <span>{{ t "pagination.page" }} {{.Page.Page}} {{ t "pagination.of" }} {{.Page.TotalPages}}</span>
   <span class="spacer"></span>
-  {{if .Page.HasNext}}<a class="btn secondary" href="/?page={{inc .Page.Page}}">Next →</a>{{end}}
+  {{if .Page.HasNext}}<a class="btn secondary" href="/?page={{inc .Page.Page}}">{{ t "pagination.next" }} →</a>{{end}}
 </nav>
 {{end}}
 {{end}}

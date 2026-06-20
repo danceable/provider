@@ -1,4 +1,4 @@
-package http_test
+package handlers_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	app "github.com/danceable/provider/examples/blog/application/article"
-	bloghttp "github.com/danceable/provider/examples/blog/presenation/http"
+	"github.com/danceable/provider/examples/blog/presenation/http/handlers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +19,7 @@ func newDashboardServer(t *testing.T) (*httptest.Server, *app.Service) {
 	t.Helper()
 
 	svc := newService()
-	h := bloghttp.NewDashboard(svc, newRenderer(t), 5)
+	h := handlers.NewDashboard(svc, newRenderer(t), 5)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /dashboard", h.Dashboard)
@@ -83,7 +83,7 @@ func TestCreate(t *testing.T) {
 		defer res.Body.Close()
 
 		assert.Equal(t, http.StatusUnprocessableEntity, res.StatusCode)
-		assert.Contains(t, readBody(t, res), "title must not be empty")
+		assert.Contains(t, readBody(t, res), "Title must not be empty")
 	})
 }
 
