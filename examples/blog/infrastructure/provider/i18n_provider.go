@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 
-	"github.com/danceable/container/bind"
 	"github.com/danceable/provider"
 	"github.com/danceable/provider/examples/blog/infrastructure/i18n"
 	"github.com/danceable/provider/examples/blog/infrastructure/repositories/memory"
@@ -27,7 +26,7 @@ func (p *I18nProvider) Order() int { return 5 }
 func (p *I18nProvider) Register(_ context.Context, c provider.Container) error {
 	if err := c.Bind(func() i18n.Repository {
 		return memory.NewTranslationRepository()
-	}, bind.Singleton()); err != nil {
+	}, provider.Singleton()); err != nil {
 		return err
 	}
 
@@ -35,7 +34,7 @@ func (p *I18nProvider) Register(_ context.Context, c provider.Container) error {
 	// scope opener that drives the scoped TranslatorProvider.
 	return c.Bind(func() middlewares.Scoper {
 		return provider.Default
-	}, bind.Singleton())
+	}, provider.Singleton())
 }
 
 // Boot has nothing to do; the bindings are eager.

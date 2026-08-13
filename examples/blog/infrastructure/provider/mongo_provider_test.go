@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/danceable/container/bind"
+	"github.com/danceable/provider"
 	"github.com/danceable/provider/examples/blog/infrastructure/config"
 	blogprovider "github.com/danceable/provider/examples/blog/infrastructure/provider"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +23,7 @@ func TestMongoProvider(t *testing.T) {
 	c := newTestContainer()
 	require.NoError(t, c.Bind(func() *config.Config {
 		return &config.Config{MongoURI: "mongodb://localhost:27017", MongoDB: "blog"}
-	}, bind.Singleton()))
+	}, provider.Singleton()))
 
 	// The client/database bindings are lazy, so Register succeeds without a server.
 	require.NoError(t, p.Register(context.Background(), c))

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/danceable/container/bind"
 	"github.com/danceable/provider"
 	app "github.com/danceable/provider/examples/blog/application/article"
 	"github.com/danceable/provider/examples/blog/infrastructure/config"
@@ -45,7 +44,7 @@ func (p *HTTPProvider) Register(_ context.Context, c provider.Container) error {
 			Handler:           handler,
 			ReadHeaderTimeout: 10 * time.Second,
 		}, nil
-	}, bind.Singleton(), bind.Lazy())
+	}, provider.Singleton(), provider.Lazy())
 }
 
 // Boot resolves the server and serves in the background so the manager can

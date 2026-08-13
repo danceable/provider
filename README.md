@@ -22,7 +22,7 @@ Features:
 - Scoped providers that run per request/job inside a child container seeded with `WithValue`
 - Global instance for small applications
 - Concurrency-safe with no race conditions
-- Works with any `Container` implementation (e.g. [danceable/container](https://github.com/danceable/container))
+- Backend-agnostic: works with any `Container` implementation through adapters, with two shipped out of the box — [danceable/container](https://github.com/danceable/container) and [uber/dig](https://github.com/uber-go/dig)
 
 ## Documentation
 
@@ -104,7 +104,7 @@ type DatabaseProvider struct{}
 func (p *DatabaseProvider) Register(ctx context.Context, c provider.Container) error {
     return c.Bind(func() Database {
         return &MySQL{Host: "localhost", Port: 3306}
-    }, bind.Singleton())
+    }, provider.Singleton())
 }
 
 func (p *DatabaseProvider) Boot(ctx context.Context, c provider.Container) error {
@@ -124,10 +124,11 @@ func (p *DatabaseProvider) Terminate(ctx context.Context) error {
 #### Global Instance
 
 The package provides a default global `Manager` instance — exposed as
-`provider.Default` — for convenience in small applications. Instead of creating
-a manager with `provider.New()`, you can call `provider.Register()` and
-`provider.Run()` directly as package-level functions; they all delegate to
-`provider.Default`.
+`provider.Default` — for convenience in small applications. It is backed by the
+[danceable/container](https://github.com/danceable/container) global container
+through the danceable adapter. Instead of creating a manager with
+`provider.New()`, you can call `provider.Register()` and `provider.Run()`
+directly as package-level functions; they all delegate to `provider.Default`.
 
 ```go
 provider.Register(&DatabaseProvider{})
@@ -143,11 +144,13 @@ if err := provider.Run(ctx); err != nil {
 
 #### Custom Manager Instance
 
-For more control, create your own `Manager` with a specific container.
+For more control, create your own `Manager` with a specific container. `New`
+takes a `provider.Container`, which you obtain by wrapping a concrete container
+in one of the adapters (see [Container Backends](#container-backends)).
 
 ```go
 c := container.New()
-m := provider.New(c)
+m := provider.New(danceable.New(c))
 
 m.Register(&DatabaseProvider{})
 m.Register(&CacheProvider{})
@@ -159,6 +162,37 @@ if err := m.Run(ctx); err != nil {
     log.Fatal(err)
 }
 ```
+
+#### Container Backends
+
+Provider is decoupled from any concrete dependency-injection container. Providers
+bind and resolve through the neutral `provider.Container` interface using neutral
+options (`provider.Singleton()`, `provider.Lazy()`, `provider.WithName()`,
+`provider.ResolveName()`), and an **adapter** maps those onto a specific backend.
+Two adapters ship with the package:
+
+| Backend | Adapter package | Construct with |
+|---------|-----------------|----------------|
+| [danceable/container](https://github.com/danceable/container) | `github.com/danceable/provider/adapters/danceable` | `danceable.New(container.New())` |
+| [uber/dig](https://github.com/uber-go/dig) | `github.com/danceable/provider/adapters/dig` | `dig.New(digcontainer.New())` |
+
+```go
+import (
+    "github.com/danceable/provider"
+    "github.com/danceable/provider/adapters/dig"
+
+    digcontainer "go.uber.org/dig"
+)
+
+// Run the same providers on uber/dig instead of danceable/container.
+m := provider.New(dig.New(digcontainer.New()))
+```
+
+> Backends differ in capability. dig bindings are always lazy and memoized, so
+> `provider.Singleton()`/`provider.Lazy()` have no extra effect there, and dig has
+> no runtime resolve parameters (`provider.WithParams`) or scope clearing
+> (`Reset` rebuilds the root container). To support another container, implement
+> `provider.Container` in your own adapter.
 
 #### Ordered Providers
 
@@ -268,7 +302,7 @@ defer scope.Terminate(r.Context())
 
 // Resolve a seeded value (bound as a named singleton).
 var user *User
-if err := scope.Container().Resolve(&user, resolve.WithName("user")); err != nil {
+if err := scope.Container().Resolve(&user, provider.ResolveName("user")); err != nil {
     return err
 }
 ```
@@ -308,7 +342,7 @@ scope, err := m.Scope(ctx,
 
 | Option | Description |
 |--------|-------------|
-| `WithValue(name string, value any)` | Seeds the scoped container with `value`, bound as a named singleton and resolvable via `resolve.WithName(name)`. A nil value returns `ErrNilScopeValue`. |
+| `WithValue(name string, value any)` | Seeds the scoped container with `value`, bound as a named singleton and resolvable via `provider.ResolveName(name)`. A nil value returns `ErrNilScopeValue`. |
 | `WithPersistent(name string)` | Makes the scope a named, persistent child (`container.Scope`) instead of the default ephemeral one (`container.Derive`). |
 | `WithAutoTermination()` | Terminates the scope automatically once the context passed to `Scope` is cancelled. Teardown runs exactly once. |
 

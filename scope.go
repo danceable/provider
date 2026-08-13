@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"slices"
 	"sync"
-
-	"github.com/danceable/container/bind"
 )
 
 // ErrNilScopeValue is returned when a nil value is passed to WithValue. The
@@ -43,7 +41,7 @@ type ScopeOption func(*scopeConfig)
 
 // WithValue seeds the scoped container with value, resolvable by name. The
 // value is bound as a named singleton, so scoped providers (and anything else
-// resolving from the scope) can retrieve it via resolve.WithName(name).
+// resolving from the scope) can retrieve it via ResolveName(name).
 func WithValue(name string, value any) ScopeOption {
 	return func(c *scopeConfig) {
 		c.values = append(c.values, scopedValue{name: name, value: value})
@@ -156,5 +154,5 @@ func bindValue(c Container, name string, value any) error {
 		func([]reflect.Value) []reflect.Value { return []reflect.Value{v} },
 	)
 
-	return c.Bind(resolver.Interface(), bind.WithName(name), bind.Singleton())
+	return c.Bind(resolver.Interface(), WithName(name), Singleton())
 }

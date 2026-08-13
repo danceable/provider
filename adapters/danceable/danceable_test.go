@@ -1,12 +1,11 @@
-package provider
+package danceable
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/danceable/container"
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
+	"github.com/danceable/provider/internal/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,19 +21,19 @@ type circle struct {
 
 func (c *circle) Area() int { return c.area }
 
-func TestNewAdapter_ImplementsContainer(t *testing.T) {
+func TestNew_ImplementsContainer(t *testing.T) {
 	t.Parallel()
 
-	var c Container = newAdapter(container.New())
+	var c contract.Container = New(container.New())
 	require.NotNil(t, c)
 }
 
 func TestAdapter_Bind_Resolve(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 42} }, bind.Singleton()))
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 42} }, contract.Singleton()))
 
 	var s Shape
 	require.NoError(t, a.Resolve(&s))
@@ -44,7 +43,7 @@ func TestAdapter_Bind_Resolve(t *testing.T) {
 func TestAdapter_Bind_PropagatesError(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 
 	// A non-function resolver is rejected by the underlying container.
 	err := a.Bind("not a function")
@@ -54,7 +53,7 @@ func TestAdapter_Bind_PropagatesError(t *testing.T) {
 func TestAdapter_Resolve_PropagatesError(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 
 	// Nothing is bound, so resolution must fail.
 	var s Shape
@@ -64,14 +63,14 @@ func TestAdapter_Resolve_PropagatesError(t *testing.T) {
 func TestAdapter_Bind_WithName(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 7} }, bind.WithName("small"), bind.Singleton()))
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 99} }, bind.WithName("big"), bind.Singleton()))
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 7} }, contract.WithName("small"), contract.Singleton()))
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 99} }, contract.WithName("big"), contract.Singleton()))
 
 	var small, big Shape
-	require.NoError(t, a.Resolve(&small, resolve.WithName("small")))
-	require.NoError(t, a.Resolve(&big, resolve.WithName("big")))
+	require.NoError(t, a.Resolve(&small, contract.WithResolveName("small")))
+	require.NoError(t, a.Resolve(&big, contract.WithResolveName("big")))
 
 	assert.Equal(t, 7, small.Area())
 	assert.Equal(t, 99, big.Area())
@@ -80,8 +79,8 @@ func TestAdapter_Bind_WithName(t *testing.T) {
 func TestAdapter_Call(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 13} }, bind.Singleton()))
+	a := New(container.New())
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 13} }, contract.Singleton()))
 
 	var got int
 	require.NoError(t, a.Call(func(s Shape) { got = s.Area() }))
@@ -91,7 +90,7 @@ func TestAdapter_Call(t *testing.T) {
 func TestAdapter_Call_PropagatesError(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 
 	// The receiver depends on an unbound Shape, so Call must return an error.
 	err := a.Call(func(Shape) {})
@@ -101,8 +100,8 @@ func TestAdapter_Call_PropagatesError(t *testing.T) {
 func TestAdapter_Fill(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 21} }, bind.Singleton()))
+	a := New(container.New())
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 21} }, contract.Singleton()))
 
 	type target struct {
 		Shape Shape `container:"type"`
@@ -117,7 +116,7 @@ func TestAdapter_Fill(t *testing.T) {
 func TestAdapter_Fill_PropagatesError(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 
 	// Fill requires a pointer to a struct; a non-pointer is rejected.
 	err := a.Fill(struct{}{})
@@ -127,8 +126,8 @@ func TestAdapter_Fill_PropagatesError(t *testing.T) {
 func TestAdapter_Reset(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 1} }, bind.Singleton()))
+	a := New(container.New())
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 1} }, contract.Singleton()))
 
 	var s Shape
 	require.NoError(t, a.Resolve(&s))
@@ -143,12 +142,12 @@ func TestAdapter_Scope_ReturnsAdapter(t *testing.T) {
 	t.Parallel()
 
 	root := container.New()
-	a := newAdapter(root)
+	a := New(root)
 
 	scoped := a.Scope("db")
 
 	// Scope must return another adapter, keeping the scope tree behind the interface.
-	scopedAdapter, ok := scoped.(*adapter)
+	scopedAdapter, ok := scoped.(*Adapter)
 	require.True(t, ok)
 
 	// The underlying container is the named child of the root, and Scope is idempotent
@@ -159,8 +158,8 @@ func TestAdapter_Scope_ReturnsAdapter(t *testing.T) {
 func TestAdapter_Scope_InheritsParentBindings(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 5} }, bind.Singleton()))
+	a := New(container.New())
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 5} }, contract.Singleton()))
 
 	scoped := a.Scope("request")
 
@@ -173,10 +172,10 @@ func TestAdapter_Scope_InheritsParentBindings(t *testing.T) {
 func TestAdapter_Scope_BindingsStayLocal(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 	scoped := a.Scope("request")
 
-	require.NoError(t, scoped.Bind(func() Shape { return &circle{area: 8} }, bind.Singleton()))
+	require.NoError(t, scoped.Bind(func() Shape { return &circle{area: 8} }, contract.Singleton()))
 
 	// A binding registered on the child must not leak to the parent.
 	var s Shape
@@ -191,26 +190,26 @@ func TestAdapter_Derive_ReturnsAdapter(t *testing.T) {
 	t.Parallel()
 
 	root := container.New()
-	a := newAdapter(root)
+	a := New(root)
 
 	derived := a.Derive()
 
-	derivedAdapter, ok := derived.(*adapter)
+	derivedAdapter, ok := derived.(*Adapter)
 	require.True(t, ok)
 
 	// A derived scope is an anonymous child whose parent is the root.
 	assert.Same(t, root, derivedAdapter.concrete.Parent())
 
 	// Each Derive produces a distinct, unregistered child.
-	other := a.Derive().(*adapter)
+	other := a.Derive().(*Adapter)
 	assert.NotSame(t, derivedAdapter.concrete, other.concrete)
 }
 
 func TestAdapter_Derive_InheritsParentBindings(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 3} }, bind.Singleton()))
+	a := New(container.New())
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 3} }, contract.Singleton()))
 
 	derived := a.Derive()
 
@@ -222,10 +221,10 @@ func TestAdapter_Derive_InheritsParentBindings(t *testing.T) {
 func TestAdapter_Derive_BindingsStayLocal(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 	derived := a.Derive()
 
-	require.NoError(t, derived.Bind(func() Shape { return &circle{area: 4} }, bind.Singleton()))
+	require.NoError(t, derived.Bind(func() Shape { return &circle{area: 4} }, contract.Singleton()))
 
 	var s Shape
 	assert.Error(t, a.Resolve(&s))
@@ -234,8 +233,8 @@ func TestAdapter_Derive_BindingsStayLocal(t *testing.T) {
 func TestAdapter_Scope_Nested(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
-	require.NoError(t, a.Bind(func() Shape { return &circle{area: 100} }, bind.Singleton()))
+	a := New(container.New())
+	require.NoError(t, a.Bind(func() Shape { return &circle{area: 100} }, contract.Singleton()))
 
 	// Scoping is chainable through the interface returned by Scope.
 	grandchild := a.Scope("outer").Scope("inner")
@@ -249,10 +248,10 @@ func TestAdapter_Scope_Nested(t *testing.T) {
 func TestAdapter_Bind_ResolverError(t *testing.T) {
 	t.Parallel()
 
-	a := newAdapter(container.New())
+	a := New(container.New())
 	sentinel := errors.New("boom")
 
-	require.NoError(t, a.Bind(func() (Shape, error) { return nil, sentinel }, bind.Singleton(), bind.Lazy()))
+	require.NoError(t, a.Bind(func() (Shape, error) { return nil, sentinel }, contract.Singleton(), contract.Lazy()))
 
 	var s Shape
 	err := a.Resolve(&s)

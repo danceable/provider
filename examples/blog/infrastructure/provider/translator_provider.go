@@ -3,8 +3,6 @@ package provider
 import (
 	"context"
 
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
 	"github.com/danceable/provider"
 	"github.com/danceable/provider/examples/blog/infrastructure/i18n"
 )
@@ -28,12 +26,12 @@ func (p *TranslatorProvider) Scoped() bool { return true }
 func (p *TranslatorProvider) Register(_ context.Context, c provider.Container) error {
 	return c.Bind(func(repo i18n.Repository) (*i18n.Translator, error) {
 		var lang i18n.Language
-		if err := c.Resolve(&lang, resolve.WithName(i18n.LanguageValue)); err != nil {
+		if err := c.Resolve(&lang, provider.ResolveName(i18n.LanguageValue)); err != nil {
 			return nil, err
 		}
 
 		return i18n.NewTranslator(repo, lang), nil
-	}, bind.Singleton(), bind.Lazy())
+	}, provider.Singleton(), provider.Lazy())
 }
 
 // Boot has nothing to do.

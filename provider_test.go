@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
 	"github.com/danceable/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -21,17 +19,19 @@ type containerMock struct {
 
 func (m *containerMock) Reset() { m.Called() }
 
-func (m *containerMock) Bind(r any, opts ...bind.BindOption) error { return m.Called(r, opts).Error(0) }
-
-func (m *containerMock) Call(r any, opts ...resolve.ResolveOption) error {
+func (m *containerMock) Bind(r any, opts ...provider.BindOption) error {
 	return m.Called(r, opts).Error(0)
 }
 
-func (m *containerMock) Resolve(a any, opts ...resolve.ResolveOption) error {
+func (m *containerMock) Call(r any, opts ...provider.ResolveOption) error {
+	return m.Called(r, opts).Error(0)
+}
+
+func (m *containerMock) Resolve(a any, opts ...provider.ResolveOption) error {
 	return m.Called(a, opts).Error(0)
 }
 
-func (m *containerMock) Fill(r any, opts ...resolve.ResolveOption) error {
+func (m *containerMock) Fill(r any, opts ...provider.ResolveOption) error {
 	return m.Called(r, opts).Error(0)
 }
 

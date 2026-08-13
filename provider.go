@@ -7,33 +7,48 @@ import (
 	"sync"
 	"time"
 
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
+	"github.com/danceable/provider/internal/contract"
 )
 
-// Container defines the interface for a dependency injection container.
-type Container interface {
-	// Reset calls the same method of the default concrete.
-	Reset()
+// Container is the backend-agnostic dependency-injection container interface. It
+// is satisfied by the adapters under github.com/danceable/provider/adapters, one
+// per supported container backend (danceable/container, uber/dig).
+type Container = contract.Container
 
-	// Bind calls the same method of the default concrete.
-	Bind(receiver any, opts ...bind.BindOption) error
+// BindOption configures a binding passed to Container.Bind.
+type BindOption = contract.BindOption
 
-	// Call calls the same method of the default concrete.
-	Call(receiver any, opts ...resolve.ResolveOption) error
+// BindOptions is the resolved neutral configuration for a binding; adapter
+// authors read it to translate a bind onto their backend.
+type BindOptions = contract.BindOptions
 
-	// Resolve calls the same method of the default concrete.
-	Resolve(abstraction any, opts ...resolve.ResolveOption) error
+// ResolveOption configures a resolution passed to Container.Call, Resolve or Fill.
+type ResolveOption = contract.ResolveOption
 
-	// Fill calls the same method of the default concrete.
-	Fill(receiver any, opts ...resolve.ResolveOption) error
+// ResolveOptions is the resolved neutral configuration for a resolution.
+type ResolveOptions = contract.ResolveOptions
 
-	// Scope creates a new child container with the given name, which can be used to manage scoped dependencies.
-	Scope(name string) Container
+// Bind-time options, re-exported from the contract so callers configure bindings
+// through the provider package without importing the backend.
+var (
+	// WithName names a binding, enabling multiple concretes per abstraction.
+	WithName = contract.WithName
 
-	// Derive creates a new child container that inherits the binding of the parent container.
-	Derive() Container
-}
+	// Singleton marks a binding as a single shared instance.
+	Singleton = contract.Singleton
+
+	// Lazy defers a resolver until the first resolution.
+	Lazy = contract.Lazy
+)
+
+// Resolve-time options, re-exported from the contract.
+var (
+	// ResolveName selects a named binding to resolve.
+	ResolveName = contract.WithResolveName
+
+	// WithParams supplies runtime values to satisfy resolver arguments.
+	WithParams = contract.WithParams
+)
 
 // Provider defines the interface for a service provider.
 type Provider interface {

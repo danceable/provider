@@ -2,6 +2,10 @@ module github.com/danceable/provider/examples/blog
 
 go 1.26
 
+// Build the example against the provider module in this repository rather than a
+// published release.
+replace github.com/danceable/provider => ../..
+
 require (
 	github.com/danceable/container v1.1.0
 	github.com/danceable/provider v1.1.0

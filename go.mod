@@ -2,7 +2,10 @@ module github.com/danceable/provider
 
 go 1.26
 
-require github.com/danceable/container v1.1.0
+require (
+	github.com/danceable/container v1.1.0
+	go.uber.org/dig v1.19.0
+)
 
 require github.com/stretchr/objx v0.5.3 // indirect
 
