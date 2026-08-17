@@ -416,6 +416,50 @@ func TestDeferred_RegisterErrorPropagatesFromResolve(t *testing.T) {
 	assert.NotContains(t, calls, "deferred.Boot")
 }
 
+func TestDeferred_RegisterErrorPropagatesFromCall(t *testing.T) {
+	t.Parallel()
+
+	m := newRealManager()
+	regErr := errors.New("register failed")
+
+	var calls []string
+	m.Register(&deferredProvider{
+		recordingProvider: recordingProvider{name: "deferred", calls: &calls, regErr: regErr},
+		provides:          []reflect.Type{reflect.TypeFor[shape]()},
+	})
+
+	c := runManager(t, m)
+
+	// The load is triggered by the argument the call needs, and its failure is
+	// reported instead of the call going ahead without it.
+	called := false
+	require.ErrorIs(t, c.Call(func(shape) { called = true }), regErr)
+
+	assert.False(t, called)
+	assert.NotContains(t, calls, "deferred.Boot")
+}
+
+func TestDeferred_RegisterErrorPropagatesFromFill(t *testing.T) {
+	t.Parallel()
+
+	m := newRealManager()
+	regErr := errors.New("register failed")
+
+	m.Register(&deferredProvider{
+		recordingProvider: recordingProvider{name: "deferred", regErr: regErr},
+		provides:          []reflect.Type{reflect.TypeFor[shape]()},
+	})
+
+	c := runManager(t, m)
+
+	var target struct {
+		Shape shape `container:"type"`
+	}
+	require.ErrorIs(t, c.Fill(&target), regErr)
+
+	assert.Nil(t, target.Shape)
+}
+
 func TestDeferred_BootErrorPropagatesFromResolve(t *testing.T) {
 	t.Parallel()
 
