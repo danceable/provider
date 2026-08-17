@@ -49,3 +49,69 @@ func WithTerminationDeadline(deadline time.Duration) Option {
 		opts.TerminationDeadline = deadline
 	}
 }
+
+// scopeConfig collects the per-scope configuration produced by ScopeOptions.
+type scopeConfig struct {
+	// values are bound into the scoped container before its providers run.
+	values []scopedValue
+
+	// name is the scope name; only used when persistent is true.
+	name string
+
+	// persistent makes the scope a named, persistent child instead of an
+	// anonymous, ephemeral one.
+	persistent bool
+
+	// autoTerminate ties the scope's teardown to the context: the scope is
+	// terminated automatically once the context passed to Scope is cancelled.
+	autoTerminate bool
+}
+
+// scopedValue is a single named value seeded into a scoped container.
+type scopedValue struct {
+	name  string
+	value any
+}
+
+// ScopeOption configures a scoped instance of the container.
+type ScopeOption func(*scopeConfig)
+
+// newScopeConfig collects the options into the configuration of one scope.
+func newScopeConfig(opts []ScopeOption) *scopeConfig {
+	config := &scopeConfig{}
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	return config
+}
+
+// WithValue seeds the scoped container with value, resolvable by name. The
+// value is bound as a named singleton, so scoped providers (and anything else
+// resolving from the scope) can retrieve it via resolve.WithName(name).
+func WithValue(name string, value any) ScopeOption {
+	return func(c *scopeConfig) {
+		c.values = append(c.values, scopedValue{name: name, value: value})
+	}
+}
+
+// WithPersistent makes the scope a named, persistent child of the manager's
+// container (container.Scope) rather than the default anonymous, ephemeral one
+// (container.Derive). The named child is cached on its parent and reused by
+// later calls with the same name.
+func WithPersistent(name string) ScopeOption {
+	return func(c *scopeConfig) {
+		c.persistent = true
+		c.name = name
+	}
+}
+
+// WithAutoTermination makes the scope terminate itself once the context passed
+// to Scope is cancelled, releasing the caller from calling Terminate. Teardown
+// runs exactly once, whether triggered by the context or by an explicit
+// Terminate, so combining the two is safe.
+func WithAutoTermination() ScopeOption {
+	return func(c *scopeConfig) {
+		c.autoTerminate = true
+	}
+}
