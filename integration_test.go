@@ -7,49 +7,16 @@ import (
 	"testing"
 
 	"github.com/danceable/container"
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
 	"github.com/danceable/provider"
+	"github.com/danceable/provider/adapters/danceable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// These tests wire the package the way an application does: a real container,
-// providers that bind and resolve real values, and assertions on what came out
-// the other end — the sequence of phases, and the objects the container hands
-// back.
-
-// adapter bridges *container.Container to provider.Container. The concrete
-// container returns its own type from Scope and Derive, so it does not satisfy
-// the interface directly; this is what an application wiring the package to a
-// container of its own has to write.
-type adapter struct {
-	concrete *container.Container
-}
-
-func adapt(c *container.Container) provider.Container { return &adapter{concrete: c} }
-
-func (a *adapter) Reset() { a.concrete.Reset() }
-
-func (a *adapter) Bind(receiver any, opts ...bind.BindOption) error {
-	return a.concrete.Bind(receiver, opts...)
-}
-
-func (a *adapter) Call(receiver any, opts ...resolve.ResolveOption) error {
-	return a.concrete.Call(receiver, opts...)
-}
-
-func (a *adapter) Resolve(abstraction any, opts ...resolve.ResolveOption) error {
-	return a.concrete.Resolve(abstraction, opts...)
-}
-
-func (a *adapter) Fill(receiver any, opts ...resolve.ResolveOption) error {
-	return a.concrete.Fill(receiver, opts...)
-}
-
-func (a *adapter) Scope(name string) provider.Container { return adapt(a.concrete.Scope(name)) }
-
-func (a *adapter) Derive() provider.Container { return adapt(a.concrete.Derive()) }
+// These tests wire the package the way an application does: a real container
+// behind its adapter, providers that bind and resolve real values, and
+// assertions on what came out the other end — the sequence of phases, and the
+// objects the container hands back.
 
 // The services the providers below wire together.
 
@@ -170,7 +137,7 @@ func boot(t *testing.T, m *provider.Manager, during func(provider.Container)) er
 	return nil
 }
 
-func newManager() *provider.Manager { return provider.New(adapt(container.New())) }
+func newManager() *provider.Manager { return provider.New(danceable.New(container.New())) }
 
 // 1. Three eager providers, each registering against what the previous one
 // bound: the order decides whether the chain wires up at all.
@@ -184,7 +151,7 @@ func TestIntegration_EagerProvidersRegisterInOrder(t *testing.T) {
 		m.Register(&service{
 			name: "A", order: dbOrder, journal: j,
 			onRegister: func(_ context.Context, c provider.Container) error {
-				return c.Bind(func() *database { return &database{dsn: "root@/app"} }, bind.Singleton())
+				return c.Bind(func() *database { return &database{dsn: "root@/app"} }, provider.Singleton())
 			},
 		})
 
@@ -197,7 +164,7 @@ func TestIntegration_EagerProvidersRegisterInOrder(t *testing.T) {
 					return err
 				}
 
-				return c.Bind(func() *repository { return &repository{db: db} }, bind.Singleton())
+				return c.Bind(func() *repository { return &repository{db: db} }, provider.Singleton())
 			},
 		})
 
@@ -210,7 +177,7 @@ func TestIntegration_EagerProvidersRegisterInOrder(t *testing.T) {
 					return err
 				}
 
-				return c.Bind(func() *api { return &api{repo: repo} }, bind.Singleton())
+				return c.Bind(func() *api { return &api{repo: repo} }, provider.Singleton())
 			},
 		})
 
@@ -286,14 +253,14 @@ func TestIntegration_EagerProvidersPullDeferredOnesAtRegistration(t *testing.T) 
 		name: "C", order: 10, journal: j,
 		provides: []reflect.Type{reflect.TypeFor[*cache]()},
 		onRegister: func(_ context.Context, c provider.Container) error {
-			return c.Bind(func() *cache { return &cache{} }, bind.Singleton())
+			return c.Bind(func() *cache { return &cache{} }, provider.Singleton())
 		},
 	})
 	m.Register(&service{
 		name: "D", order: 20, journal: j,
 		provides: []reflect.Type{reflect.TypeFor[*disk]()},
 		onRegister: func(_ context.Context, c provider.Container) error {
-			return c.Bind(func() *disk { return &disk{} }, bind.Singleton())
+			return c.Bind(func() *disk { return &disk{} }, provider.Singleton())
 		},
 	})
 
@@ -340,7 +307,7 @@ func TestIntegration_DeferredProviderPullsAnotherAtRegistration(t *testing.T) {
 				return err
 			}
 
-			return c.Bind(func() *repository { return &repository{db: db} }, bind.Singleton())
+			return c.Bind(func() *repository { return &repository{db: db} }, provider.Singleton())
 		},
 	})
 
@@ -349,7 +316,7 @@ func TestIntegration_DeferredProviderPullsAnotherAtRegistration(t *testing.T) {
 		name: "D", order: 20, journal: j,
 		provides: []reflect.Type{reflect.TypeFor[*database]()},
 		onRegister: func(_ context.Context, c provider.Container) error {
-			return c.Bind(func() *database { return &database{dsn: "root@/deep"} }, bind.Singleton())
+			return c.Bind(func() *database { return &database{dsn: "root@/deep"} }, provider.Singleton())
 		},
 	})
 
@@ -394,14 +361,14 @@ func TestIntegration_CompetingDeferredProvidersResolveByOrder(t *testing.T) {
 		name: "B", order: 20, journal: j,
 		provides: []reflect.Type{reflect.TypeFor[gateway]()},
 		onRegister: func(_ context.Context, c provider.Container) error {
-			return c.Bind(func() gateway { return paypal{} }, bind.Singleton())
+			return c.Bind(func() gateway { return paypal{} }, provider.Singleton())
 		},
 	})
 	m.Register(&service{
 		name: "C", order: 10, journal: j,
 		provides: []reflect.Type{reflect.TypeFor[gateway]()},
 		onRegister: func(_ context.Context, c provider.Container) error {
-			return c.Bind(func() gateway { return stripe{} }, bind.Singleton())
+			return c.Bind(func() gateway { return stripe{} }, provider.Singleton())
 		},
 	})
 
@@ -434,7 +401,7 @@ func TestIntegration_ScopedProviderResolvesFromAnAncestor(t *testing.T) {
 	m.Register(&service{
 		name: "A", order: 1, journal: j,
 		onRegister: func(_ context.Context, c provider.Container) error {
-			return c.Bind(func() *database { return &database{dsn: "root@/app"} }, bind.Singleton())
+			return c.Bind(func() *database { return &database{dsn: "root@/app"} }, provider.Singleton())
 		},
 	})
 
@@ -451,7 +418,7 @@ func TestIntegration_ScopedProviderResolvesFromAnAncestor(t *testing.T) {
 				return err
 			}
 
-			return c.Bind(func() *repository { return &repository{db: db} }, bind.Singleton())
+			return c.Bind(func() *repository { return &repository{db: db} }, provider.Singleton())
 		},
 	})
 
@@ -474,7 +441,7 @@ func TestIntegration_ScopedProviderResolvesFromAnAncestor(t *testing.T) {
 		}
 
 		_ = first.Container().Resolve(&firstRepo)
-		_ = first.Container().Resolve(&firstID, resolve.WithName("requestID"))
+		_ = first.Container().Resolve(&firstID, provider.ResolveName("requestID"))
 
 		second, err := m.Scope(context.Background())
 		if err != nil {

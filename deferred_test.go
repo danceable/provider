@@ -9,8 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
+	"github.com/danceable/provider/adapters/danceable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +33,7 @@ func (p *orderedDeferredProvider) Order() int { return p.order }
 // bindShape returns a Register hook binding shape to a square of the given side.
 func bindShape(side int) func(context.Context, Container) error {
 	return func(_ context.Context, c Container) error {
-		return c.Bind(func() shape { return &square{side: side} }, bind.Singleton())
+		return c.Bind(func() shape { return &square{side: side} }, Singleton())
 	}
 }
 
@@ -132,7 +131,7 @@ func TestDeferred_NotTriggeredByAnotherType(t *testing.T) {
 	})
 
 	c := runManager(t, m)
-	require.NoError(t, c.Bind(func() int { return 7 }, bind.Singleton()))
+	require.NoError(t, c.Bind(func() int { return 7 }, Singleton()))
 
 	var n int
 	require.NoError(t, c.Resolve(&n))
@@ -151,7 +150,7 @@ func TestDeferred_LoadedOnCall(t *testing.T) {
 			name:  "deferred",
 			calls: &calls,
 			onRegister: func(_ context.Context, c Container) error {
-				return c.Bind(func() *square { return &square{side: 5} }, bind.Singleton())
+				return c.Bind(func() *square { return &square{side: 5} }, Singleton())
 			},
 		},
 		// The provided concrete also triggers on the interfaces it implements,
@@ -204,11 +203,11 @@ func TestDeferred_LoadsChainedProvider(t *testing.T) {
 			calls: &calls,
 			onRegister: func(_ context.Context, c Container) error {
 				var area int
-				if err := c.Resolve(&area, resolve.WithName("area")); err != nil {
+				if err := c.Resolve(&area, ResolveName("area")); err != nil {
 					return err
 				}
 
-				return c.Bind(func() shape { return &circle{area: area} }, bind.Singleton())
+				return c.Bind(func() shape { return &circle{area: area} }, Singleton())
 			},
 		},
 		provides: []reflect.Type{reflect.TypeFor[shape]()},
@@ -219,7 +218,7 @@ func TestDeferred_LoadsChainedProvider(t *testing.T) {
 			name:  "area",
 			calls: &calls,
 			onRegister: func(_ context.Context, c Container) error {
-				return c.Bind(func() int { return 12 }, bind.WithName("area"), bind.Singleton())
+				return c.Bind(func() int { return 12 }, WithName("area"), Singleton())
 			},
 		},
 		provides: []reflect.Type{reflect.TypeFor[int]()},
@@ -619,7 +618,7 @@ func TestDeferred_ConcurrentResolveLoadsOnce(t *testing.T) {
 			name: "deferred",
 			onRegister: func(_ context.Context, c Container) error {
 				registrations.Add(1)
-				return c.Bind(func() shape { return &square{side: 2} }, bind.Singleton())
+				return c.Bind(func() shape { return &square{side: 2} }, Singleton())
 			},
 		},
 		provides: []reflect.Type{reflect.TypeFor[shape]()},
@@ -645,7 +644,7 @@ func TestDeferred_ConcurrentResolveLoadsOnce(t *testing.T) {
 func TestDeferred_NoDecorationWithoutDeferredProviders(t *testing.T) {
 	t.Parallel()
 
-	root := newAdapter(nil)
+	root := danceable.New(nil)
 	m := New(root)
 
 	// Nothing is deferred, so providers keep receiving the manager's container.

@@ -4,37 +4,51 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
+	"github.com/danceable/provider/internal/contract"
 )
 
 // Container defines the interface for a dependency injection container.
 //
-// The package never depends on a concrete container: adapter bridges the
-// reference implementation, deferring decorates any of them with on-demand
-// loading, and an application is free to supply its own.
-type Container interface {
-	// Reset deletes all the existing bindings.
-	Reset()
+// The package never depends on a concrete container: the adapters under
+// github.com/danceable/provider/adapters bridge the supported backends,
+// deferring decorates any of them with on-demand loading, and an application is
+// free to supply its own.
+type Container = contract.Container
 
-	// Bind maps the type a resolver function returns to that resolver.
-	Bind(receiver any, opts ...bind.BindOption) error
+// The neutral option types, re-exported from the contract so that callers
+// configure a container through this package without importing a backend.
+type (
+	// BindOption configures a binding passed to Container.Bind.
+	BindOption = contract.BindOption
 
-	// Call invokes a function, resolving its arguments from the container.
-	Call(receiver any, opts ...resolve.ResolveOption) error
+	// BindOptions is the resolved configuration of a binding; an adapter reads it
+	// to translate the bind onto its backend.
+	BindOptions = contract.BindOptions
 
-	// Resolve fills a pointer with the concrete bound to the type it points to.
-	Resolve(abstraction any, opts ...resolve.ResolveOption) error
+	// ResolveOption configures a resolution passed to Container.Call, Resolve or Fill.
+	ResolveOption = contract.ResolveOption
 
-	// Fill resolves the fields of a struct that carry the container tag.
-	Fill(receiver any, opts ...resolve.ResolveOption) error
+	// ResolveOptions is the resolved configuration of a resolution.
+	ResolveOptions = contract.ResolveOptions
+)
 
-	// Scope returns a named child container, reused on later calls with that name.
-	Scope(name string) Container
+// The options themselves, re-exported for the same reason.
+var (
+	// WithName names a binding, enabling multiple concretes per abstraction.
+	WithName = contract.WithName
 
-	// Derive returns an anonymous child container, collected once it is dropped.
-	Derive() Container
-}
+	// Singleton marks a binding as a single shared instance.
+	Singleton = contract.Singleton
+
+	// Lazy defers a resolver until the first resolution.
+	Lazy = contract.Lazy
+
+	// ResolveName selects the named binding to resolve.
+	ResolveName = contract.WithResolveName
+
+	// WithParams supplies runtime values to satisfy resolver arguments.
+	WithParams = contract.WithParams
+)
 
 // ErrNilScopeValue is returned when a nil value is passed to WithValue. The
 // container binds values by their reflected type, which cannot be determined
@@ -55,5 +69,5 @@ func bindValue(c Container, name string, value any) error {
 		func([]reflect.Value) []reflect.Value { return []reflect.Value{v} },
 	)
 
-	return c.Bind(resolver.Interface(), bind.WithName(name), bind.Singleton())
+	return c.Bind(resolver.Interface(), WithName(name), Singleton())
 }

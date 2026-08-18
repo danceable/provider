@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/danceable/container"
-	"github.com/danceable/container/bind"
-	"github.com/danceable/container/resolve"
+	"github.com/danceable/provider/adapters/danceable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,8 +81,12 @@ type square struct{ side int }
 
 func (s *square) Area() int { return s.side * s.side }
 
+type circle struct{ area int }
+
+func (c *circle) Area() int { return c.area }
+
 func newRealManager() *Manager {
-	return New(newAdapter(container.New()))
+	return New(danceable.New(container.New()))
 }
 
 func TestRegister_ScopedWithoutOrder(t *testing.T) {
@@ -159,11 +162,11 @@ func TestWithValue_SeedsScopedContainer(t *testing.T) {
 	require.NoError(t, err)
 
 	var userID int
-	require.NoError(t, scope.Container().Resolve(&userID, resolve.WithName("userID")))
+	require.NoError(t, scope.Container().Resolve(&userID, ResolveName("userID")))
 	assert.Equal(t, 42, userID)
 
 	var region string
-	require.NoError(t, scope.Container().Resolve(&region, resolve.WithName("region")))
+	require.NoError(t, scope.Container().Resolve(&region, ResolveName("region")))
 	assert.Equal(t, "eu", region)
 }
 
@@ -177,7 +180,7 @@ func TestWithValue_ResolvableByScopedProvider(t *testing.T) {
 		name:   "consumer",
 		scoped: true,
 		onBoot: func(_ context.Context, c Container) error {
-			return c.Resolve(&seen, resolve.WithName("userID"))
+			return c.Resolve(&seen, ResolveName("userID"))
 		},
 	})
 
@@ -202,8 +205,8 @@ func TestWithValue_NilValue(t *testing.T) {
 func TestScope_InheritsParentBindings(t *testing.T) {
 	t.Parallel()
 
-	root := newAdapter(container.New())
-	require.NoError(t, root.Bind(func() shape { return &square{side: 4} }, bind.Singleton()))
+	root := danceable.New(container.New())
+	require.NoError(t, root.Bind(func() shape { return &square{side: 4} }, Singleton()))
 
 	m := New(root)
 
@@ -226,8 +229,8 @@ func TestScope_EphemeralScopesAreIndependent(t *testing.T) {
 	require.NoError(t, err)
 
 	var firstID, secondID string
-	require.NoError(t, first.Container().Resolve(&firstID, resolve.WithName("id")))
-	require.NoError(t, second.Container().Resolve(&secondID, resolve.WithName("id")))
+	require.NoError(t, first.Container().Resolve(&firstID, ResolveName("id")))
+	require.NoError(t, second.Container().Resolve(&secondID, ResolveName("id")))
 
 	assert.Equal(t, "a", firstID)
 	assert.Equal(t, "b", secondID)
@@ -240,7 +243,7 @@ func TestWithPersistent_ReusesNamedChild(t *testing.T) {
 
 	first, err := m.Scope(context.Background(), WithPersistent("shared"))
 	require.NoError(t, err)
-	require.NoError(t, first.Container().Bind(func() shape { return &square{side: 3} }, bind.Singleton()))
+	require.NoError(t, first.Container().Bind(func() shape { return &square{side: 3} }, Singleton()))
 
 	// A second persistent scope with the same name addresses the same child,
 	// so it sees the binding registered through the first.

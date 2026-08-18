@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 
-	"github.com/danceable/container/bind"
 	"github.com/danceable/provider"
 	app "github.com/danceable/provider/examples/blog/application/article"
 	domain "github.com/danceable/provider/examples/blog/domain/article"
@@ -29,13 +28,13 @@ func (p *ArticleProvider) Order() int { return 20 }
 func (p *ArticleProvider) Register(_ context.Context, c provider.Container) error {
 	if err := c.Bind(func(db *mongo.Database) domain.Repository {
 		return mongodb.NewArticleRepository(db)
-	}, bind.Singleton(), bind.Lazy()); err != nil {
+	}, provider.Singleton(), provider.Lazy()); err != nil {
 		return err
 	}
 
 	return c.Bind(func(repo domain.Repository) *app.Service {
 		return app.NewService(repo)
-	}, bind.Singleton(), bind.Lazy())
+	}, provider.Singleton(), provider.Lazy())
 }
 
 // Boot has nothing to do.

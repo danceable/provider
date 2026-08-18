@@ -7,7 +7,6 @@ package provider
 import (
 	"context"
 
-	"github.com/danceable/container/bind"
 	"github.com/danceable/provider"
 	"github.com/danceable/provider/examples/blog/infrastructure/config"
 )
@@ -29,7 +28,7 @@ func (p *ConfigProvider) Order() int { return 0 }
 func (p *ConfigProvider) Register(_ context.Context, c provider.Container) error {
 	return c.Bind(func() (*config.Config, error) {
 		return config.FromEnv()
-	}, bind.Singleton())
+	}, provider.Singleton())
 }
 
 // Boot has nothing to do; the binding is eager.

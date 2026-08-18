@@ -23,7 +23,7 @@ Features:
 - Deferred providers that load the first time one of the types they provide is requested
 - Global instance for small applications
 - Concurrency-safe with no race conditions
-- Works with any container satisfying the `Container` interface — [danceable/container](https://github.com/danceable/container) needs a four-line bridge
+- Backend-agnostic: works with any container through an adapter, with [danceable/container](https://github.com/danceable/container) shipped out of the box
 
 ## Documentation
 
@@ -108,7 +108,7 @@ type DatabaseProvider struct{}
 func (p *DatabaseProvider) Register(ctx context.Context, c provider.Container) error {
     return c.Bind(func() Database {
         return &MySQL{Host: "localhost", Port: 3306}
-    }, bind.Singleton())
+    }, provider.Singleton())
 }
 
 func (p *DatabaseProvider) Boot(ctx context.Context, c provider.Container) error {
@@ -128,10 +128,11 @@ func (p *DatabaseProvider) Terminate(ctx context.Context) error {
 #### Global Instance
 
 The package provides a default global `Manager` instance — exposed as
-`provider.Default` — for convenience in small applications. Instead of creating
-a manager with `provider.New()`, you can call `provider.Register()` and
-`provider.Run()` directly as package-level functions; they all delegate to
-`provider.Default`.
+`provider.Default` — for convenience in small applications. It is backed by the
+[danceable/container](https://github.com/danceable/container) global container
+through the danceable adapter. Instead of creating a manager with
+`provider.New()`, you can call `provider.Register()` and `provider.Run()`
+directly as package-level functions; they all delegate to `provider.Default`.
 
 ```go
 provider.Register(&DatabaseProvider{})
@@ -147,20 +148,13 @@ if err := provider.Run(ctx); err != nil {
 
 #### Custom Manager Instance
 
-For more control, create your own `Manager` with a specific container. `Manager`
-works against the `Container` interface; the reference container returns its own
-type from `Scope` and `Derive`, so bridge those two methods — embedding provides
-the rest:
+For more control, create your own `Manager` with a specific container. `New`
+takes a `provider.Container`, which you obtain by wrapping a concrete container
+in one of the adapters (see [Container Backends](#container-backends)).
 
 ```go
-type bridge struct{ *container.Container }
-
-func (b bridge) Scope(name string) provider.Container { return bridge{b.Container.Scope(name)} }
-func (b bridge) Derive() provider.Container           { return bridge{b.Container.Derive()} }
-```
-
-```go
-m := provider.New(bridge{container.New()})
+c := container.New()
+m := provider.New(danceable.New(c))
 
 m.Register(&DatabaseProvider{})
 m.Register(&CacheProvider{})
@@ -173,8 +167,36 @@ if err := m.Run(ctx); err != nil {
 }
 ```
 
-> `provider.Default` is already wired to `container.Default`, so the global
-> instance needs no bridge.
+#### Container Backends
+
+Provider is decoupled from any concrete dependency-injection container. Providers
+bind and resolve through the neutral `provider.Container` interface using neutral
+options (`provider.Singleton()`, `provider.Lazy()`, `provider.WithName()`,
+`provider.ResolveName()`), and an **adapter** maps those onto a specific backend.
+One adapter ships with the package:
+
+| Backend | Adapter package | Construct with |
+|---------|-----------------|----------------|
+| [danceable/container](https://github.com/danceable/container) | `github.com/danceable/provider/adapters/danceable` | `danceable.New(container.New())` |
+
+```go
+import (
+    "github.com/danceable/container"
+    "github.com/danceable/provider"
+    "github.com/danceable/provider/adapters/danceable"
+)
+
+m := provider.New(danceable.New(container.New()))
+```
+
+> To run the same providers on another container, implement `provider.Container`
+> in an adapter of your own. Backends differ in capability, and the neutral
+> options are the place that shows: an adapter whose bindings are always lazy and
+> memoized has nothing to do for `provider.Singleton()` and `provider.Lazy()`, and
+> one without runtime resolve parameters ignores `provider.WithParams()`.
+>
+> `provider.Default` is already wired to `container.Default` through the
+> danceable adapter, so the global instance needs no wiring of its own.
 
 #### Ordered Providers
 
@@ -284,7 +306,7 @@ defer scope.Terminate(r.Context())
 
 // Resolve a seeded value (bound as a named singleton).
 var user *User
-if err := scope.Container().Resolve(&user, resolve.WithName("user")); err != nil {
+if err := scope.Container().Resolve(&user, provider.ResolveName("user")); err != nil {
     return err
 }
 ```
@@ -336,7 +358,7 @@ func (p *SearchProvider) Provides() []reflect.Type {
 }
 
 func (p *SearchProvider) Register(ctx context.Context, c provider.Container) error {
-    return c.Bind(func() search.Client { return search.Dial(/* ... */) }, bind.Singleton())
+    return c.Bind(func() search.Client { return search.Dial(/* ... */) }, provider.Singleton())
 }
 
 func (p *SearchProvider) Boot(ctx context.Context, c provider.Container) error     { /* ... */ }
@@ -393,7 +415,7 @@ Details worth knowing:
           return err
       }
 
-      return c.Bind(func(db *sql.DB) Repository { /* ... */ }, bind.Singleton(), bind.Lazy())
+      return c.Bind(func(db *sql.DB) Repository { /* ... */ }, provider.Singleton(), provider.Lazy())
   }
   ```
 
@@ -416,10 +438,10 @@ Details worth knowing:
   trigger set, so naming one type in two providers means a request loads both,
   lowest order first, and both are terminated later — the one whose binding is
   discarded still ran and still holds whatever it acquired. Which binding
-  survives is the container's call, not this package's: a `bind.Singleton()` slot
+  survives is the container's call, not this package's: a `provider.Singleton()` slot
   is filled once, so the **lowest** order wins, while a transient binding is
   overwritten, so the **highest** order wins. If you want a default and an
-  override, separate them with `bind.WithName(...)` rather than relying on order.
+  override, separate them with `provider.WithName(...)` rather than relying on order.
 - **A deferred provider keeps its place.** It sits in the same list as every
   other provider, at the order it declares, and terminates in that slot like the
   rest — deferral changes *when* it runs, not *where* it sits. Providers nothing
@@ -466,7 +488,7 @@ if err := scope.Container().Resolve(&reporting); err != nil {
 
 | Option | Description |
 |--------|-------------|
-| `WithValue(name string, value any)` | Seeds the scoped container with `value`, bound as a named singleton and resolvable via `resolve.WithName(name)`. A nil value returns `ErrNilScopeValue`. |
+| `WithValue(name string, value any)` | Seeds the scoped container with `value`, bound as a named singleton and resolvable via `provider.ResolveName(name)`. A nil value returns `ErrNilScopeValue`. |
 | `WithPersistent(name string)` | Makes the scope a named, persistent child (`container.Scope`) instead of the default ephemeral one (`container.Derive`). |
 | `WithAutoTermination()` | Terminates the scope automatically once the context passed to `Scope` is cancelled. Teardown runs exactly once. |
 

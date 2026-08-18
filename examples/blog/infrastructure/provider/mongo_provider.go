@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/danceable/container/bind"
 	"github.com/danceable/provider"
 	"github.com/danceable/provider/examples/blog/infrastructure/config"
 	"github.com/danceable/provider/examples/blog/infrastructure/mongodb"
@@ -32,13 +31,13 @@ func (p *MongoProvider) Order() int { return 10 }
 func (p *MongoProvider) Register(_ context.Context, c provider.Container) error {
 	if err := c.Bind(func(cfg *config.Config) (*mongo.Client, error) {
 		return mongodb.Connect(cfg.MongoURI)
-	}, bind.Singleton(), bind.Lazy()); err != nil {
+	}, provider.Singleton(), provider.Lazy()); err != nil {
 		return err
 	}
 
 	return c.Bind(func(client *mongo.Client, cfg *config.Config) *mongo.Database {
 		return client.Database(cfg.MongoDB)
-	}, bind.Singleton(), bind.Lazy())
+	}, provider.Singleton(), provider.Lazy())
 }
 
 // Boot resolves the client and pings the server so a misconfigured connection

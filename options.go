@@ -88,7 +88,7 @@ func newScopeConfig(opts []ScopeOption) *scopeConfig {
 
 // WithValue seeds the scoped container with value, resolvable by name. The
 // value is bound as a named singleton, so scoped providers (and anything else
-// resolving from the scope) can retrieve it via resolve.WithName(name).
+// resolving from the scope) can retrieve it via ResolveName(name).
 func WithValue(name string, value any) ScopeOption {
 	return func(c *scopeConfig) {
 		c.values = append(c.values, scopedValue{name: name, value: value})

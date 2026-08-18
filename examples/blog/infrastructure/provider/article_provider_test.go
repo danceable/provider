@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/danceable/container/bind"
+	"github.com/danceable/provider"
 	app "github.com/danceable/provider/examples/blog/application/article"
 	domain "github.com/danceable/provider/examples/blog/domain/article"
 	"github.com/danceable/provider/examples/blog/infrastructure/mongodb"
@@ -30,7 +30,7 @@ func TestArticleProvider(t *testing.T) {
 	db := client.Database("blog")
 
 	c := newTestContainer()
-	require.NoError(t, c.Bind(func() *mongo.Database { return db }, bind.Singleton(), bind.Lazy()))
+	require.NoError(t, c.Bind(func() *mongo.Database { return db }, provider.Singleton(), provider.Lazy()))
 	require.NoError(t, p.Register(context.Background(), c))
 
 	var repo domain.Repository

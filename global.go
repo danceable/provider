@@ -4,10 +4,14 @@ import (
 	"context"
 
 	"github.com/danceable/container"
+	"github.com/danceable/provider/adapters/danceable"
 )
 
-// Default is the default concrete of the service provider manager.
-var Default = New(newAdapter(container.Default))
+// Default is the default service provider manager. It is backed by the
+// danceable/container global container, wrapped in the danceable adapter. To use
+// a different backend, build a manager explicitly with New and an adapter for
+// that container.
+var Default = New(danceable.New(container.Default))
 
 // Register calls the Register method of the default service provider manager.
 func Register(provider Provider) {
