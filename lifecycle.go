@@ -6,18 +6,12 @@ import (
 	"time"
 )
 
-// The phases of the provider lifecycle, each expressed once over a registry. The
-// manager runs them against its own providers and every scope runs them against
-// its copy of the scoped ones, so global and scoped providers follow exactly the
-// same rules — including a deferred provider, which runs the same two phases
-// late, on its own.
+// The phases of the provider lifecycle, each written once over a registry: the
+// manager runs them against its own providers, every scope against its copy of
+// the scoped ones, and a deferred provider runs the same two phases late.
 //
-// Each phase records what it got through, because that is what termination goes
-// by: a provider is terminated once its Register has run, whether or not it went
-// on to boot.
+// Each phase records what it got through, because termination goes by that.
 
-// register registers the providers that run at boot, walking past the deferred
-// ones: those register when something asks for what they provide.
 func register(ctx context.Context, providers *registry, container Container) error {
 	for _, entry := range providers.list() {
 		if entry.deferred() {
@@ -34,7 +28,6 @@ func register(ctx context.Context, providers *registry, container Container) err
 	return nil
 }
 
-// boot boots the providers that run at boot.
 func boot(ctx context.Context, providers *registry, container Container) error {
 	for _, entry := range providers.list() {
 		if entry.deferred() {
@@ -51,9 +44,26 @@ func boot(ctx context.Context, providers *registry, container Container) error {
 	return nil
 }
 
-// terminate terminates the providers that registered, in reverse order. A
-// provider whose Register never ran holds nothing to release: a deferred one
-// nothing ever asked for, or one the phases had not reached when they failed.
+// load runs a deferred provider through both phases against the container it is
+// given.
+func load(ctx context.Context, providers *registry, entry *registration, container Container) error {
+	if err := entry.provider.Register(ctx, container); err != nil {
+		return err
+	}
+
+	entry.registered.Store(true)
+
+	if err := entry.provider.Boot(ctx, container); err != nil {
+		return err
+	}
+
+	providers.booted(entry)
+
+	return nil
+}
+
+// terminate terminates the providers that registered, in reverse order. One
+// whose Register never ran holds nothing to release.
 func terminate(ctx context.Context, providers *registry) error {
 	entries := providers.list()
 
@@ -71,29 +81,8 @@ func terminate(ctx context.Context, providers *registry) error {
 	return nil
 }
 
-// load registers and boots a single deferred provider against the container it
-// is given, recording each step exactly as the boot-time phases do.
-func load(ctx context.Context, providers *registry, entry *registration, container Container) error {
-	if err := entry.provider.Register(ctx, container); err != nil {
-		return err
-	}
-
-	entry.registered.Store(true)
-
-	if err := entry.provider.Boot(ctx, container); err != nil {
-		return err
-	}
-
-	providers.booted(entry)
-
-	return nil
-}
-
-// shutdown waits out the grace period, then terminates the providers within the
-// termination deadline, reporting the deadline's error when they do not finish
-// in time.
+// shutdown waits out the grace period, then terminates within the deadline.
 func shutdown(providers *registry, opts *options) error {
-	// wait for a grace period to allow providers to terminate gracefully.
 	time.Sleep(opts.TerminationDelay)
 
 	ctx, cancel := context.WithTimeout(context.Background(), opts.TerminationDeadline)
