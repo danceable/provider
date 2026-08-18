@@ -20,9 +20,10 @@ Features:
 - Ordered execution via the optional `HasOrder` interface
 - Reverse-order termination for clean shutdown
 - Scoped providers that run per request/job inside a child container seeded with `WithValue`
+- Deferred providers that load the first time one of the types they provide is requested
 - Global instance for small applications
 - Concurrency-safe with no race conditions
-- Works with any `Container` implementation (e.g. [danceable/container](https://github.com/danceable/container))
+- Works with any container satisfying the `Container` interface — [danceable/container](https://github.com/danceable/container) needs a four-line bridge
 
 ## Documentation
 
@@ -56,6 +57,9 @@ phases:
    depends on bindings from other providers.
 3. **Terminate** — When the context is cancelled the manager terminates every
    provider in **reverse** order (highest to lowest), allowing graceful cleanup.
+   Termination covers every provider whose `Register` ran, including one whose
+   `Boot` failed — `Register` alone may already have acquired something — so
+   `Terminate` should release only what the provider actually holds.
 
 A provider is any type that implements the `Provider` interface:
 
@@ -143,11 +147,20 @@ if err := provider.Run(ctx); err != nil {
 
 #### Custom Manager Instance
 
-For more control, create your own `Manager` with a specific container.
+For more control, create your own `Manager` with a specific container. `Manager`
+works against the `Container` interface; the reference container returns its own
+type from `Scope` and `Derive`, so bridge those two methods — embedding provides
+the rest:
 
 ```go
-c := container.New()
-m := provider.New(c)
+type bridge struct{ *container.Container }
+
+func (b bridge) Scope(name string) provider.Container { return bridge{b.Container.Scope(name)} }
+func (b bridge) Derive() provider.Container           { return bridge{b.Container.Derive()} }
+```
+
+```go
+m := provider.New(bridge{container.New()})
 
 m.Register(&DatabaseProvider{})
 m.Register(&CacheProvider{})
@@ -159,6 +172,9 @@ if err := m.Run(ctx); err != nil {
     log.Fatal(err)
 }
 ```
+
+> `provider.Default` is already wired to `container.Default`, so the global
+> instance needs no bridge.
 
 #### Ordered Providers
 
@@ -295,12 +311,154 @@ scope, err := m.Scope(ctx,
 > `Scope` is a method on `*Manager`; reach the global instance via
 > `provider.Default.Scope(...)`.
 
+#### Deferred Providers
+
+Some providers are expensive to boot and are not needed on every run — a search
+client, a PDF renderer, a payment gateway. Mark these by implementing the
+optional `Deferrable` interface and listing the types the provider binds:
+
+```go
+type Deferrable interface {
+    Provides() []reflect.Type
+}
+```
+
+`Register` keeps such a provider with all the others; `Run` simply walks past
+it. It is registered and booted the first time one of the types it provides is
+requested from the container — through `Resolve`, `Call` or `Fill` — and never
+at all if nothing asks for it.
+
+```go
+type SearchProvider struct{}
+
+func (p *SearchProvider) Provides() []reflect.Type {
+    return []reflect.Type{reflect.TypeFor[search.Client]()}
+}
+
+func (p *SearchProvider) Register(ctx context.Context, c provider.Container) error {
+    return c.Bind(func() search.Client { return search.Dial(/* ... */) }, bind.Singleton())
+}
+
+func (p *SearchProvider) Boot(ctx context.Context, c provider.Container) error     { /* ... */ }
+func (p *SearchProvider) Terminate(ctx context.Context) error                      { /* ... */ }
+```
+
+```go
+m.Register(&SearchProvider{}) // registered like any other provider
+
+if err := m.Run(ctx, provider.WithCallback(func(ctx context.Context, c provider.Container) {
+    // Nothing has asked for a search.Client yet, so the provider has not booted.
+
+    var client search.Client
+    if err := c.Resolve(&client); err != nil { // registers and boots it now
+        log.Fatal(err)
+    }
+})); err != nil {
+    log.Fatal(err)
+}
+```
+
+Details worth knowing:
+
+- **A provided type also triggers on the interfaces it implements**, mirroring
+  the container's own lookup fallback — binding `*redis.Client` and providing
+  that type loads the provider when a `Cache` interface it implements is
+  requested.
+- **Loading is depth-first, and runs both phases.** The request that triggers a
+  provider blocks until that provider is completely up — `Register` **and**
+  `Boot` — and, when it pulls in further deferred providers, until those are up
+  too. A chain `A → C → D` runs `D.Register`, `D.Boot`, then the rest of
+  `C.Register`, then `C.Boot`, and only then does A's request return:
+
+  ```
+  A.Boot {
+    C.Register {
+      D.Register
+      D.Boot
+    C.Register }
+    C.Boot
+  A.Boot }
+  ```
+
+  A provider's dependencies are therefore fully booted before it binds anything.
+- **A deferred provider may depend on another one, but it must ask for it.**
+  Requesting a deferred type while a provider registers or boots loads the
+  provider behind it too, so pulling a dependency through the container you were
+  handed works:
+
+  ```go
+  func (p *RepositoryProvider) Register(ctx context.Context, c provider.Container) error {
+      var db *sql.DB
+      if err := c.Resolve(&db); err != nil { // loads the deferred database provider
+          return err
+      }
+
+      return c.Bind(func(db *sql.DB) Repository { /* ... */ }, bind.Singleton(), bind.Lazy())
+  }
+  ```
+
+  What does **not** work is leaving that dependency to the container: a resolver
+  whose parameter is provided by a deferred provider that has not loaded fails
+  with a missing binding. Only the types named at `Resolve`, `Call` and `Fill`
+  trigger loading — the container resolves a resolver's own parameters
+  internally, where nothing can intercept them. Pull the deferred types you
+  depend on in `Register` or `Boot` and every later resolution finds them.
+
+  A provider requesting one of its own types (the usual bind-in-`Register`,
+  resolve-in-`Boot` pattern) is not affected: it never waits for itself. Two
+  providers that need each other while loading are a cycle — the inner request
+  falls through to the container and fails as a missing binding.
+- **Loading happens once**, even when several goroutines request the type at the
+  same time — the others wait for the load rather than racing past it. A load
+  that fails is not retried; every request that triggers it reports the same
+  error.
+- **Two providers that provide the same type both load.** `Provides()` is the
+  trigger set, so naming one type in two providers means a request loads both,
+  lowest order first, and both are terminated later — the one whose binding is
+  discarded still ran and still holds whatever it acquired. Which binding
+  survives is the container's call, not this package's: a `bind.Singleton()` slot
+  is filled once, so the **lowest** order wins, while a transient binding is
+  overwritten, so the **highest** order wins. If you want a default and an
+  override, separate them with `bind.WithName(...)` rather than relying on order.
+- **A deferred provider keeps its place.** It sits in the same list as every
+  other provider, at the order it declares, and terminates in that slot like the
+  rest — deferral changes *when* it runs, not *where* it sits. Providers nothing
+  ever needed are simply not terminated, since they never registered.
+  `Order()` does not decide when a deferred provider **loads** — whoever asks for
+  it first decides that — only where it sits in the teardown. Order a deferred
+  provider above whatever depends on it, exactly as you would an eager one.
+- **The context is the application's.** A deferred provider is registered and
+  booted with the context passed to `Run`, even when a short-lived caller
+  triggers the load, so its lifetime matches the application's.
+- **`Provides()` returning nothing opts out**: nothing could ever trigger such a
+  provider, so it takes part in the regular lifecycle instead.
+
+Deferral combines with scoping: a provider that is both `Scoped()` and
+`Deferrable` is deferred **within each scope**. Every scope gets its own copy,
+loads it the first time the scope's container is asked for one of its types, and
+terminates it with the scope — so a request that never touches the service pays
+nothing for it.
+
+```go
+scope, err := m.Scope(r.Context())
+if err != nil {
+    return err
+}
+defer scope.Terminate(r.Context())
+
+// Loads the scoped deferred provider that binds this type, for this scope only.
+var reporting report.Builder
+if err := scope.Container().Resolve(&reporting); err != nil {
+    return err
+}
+```
+
 #### Manager Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | New | `New(container Container) *Manager` | Creates a new manager instance with the given container. |
-| Register | `Register(provider Provider)` | Registers a service provider. Providers implementing `HasScope` and returning `true` are stored as scoped providers; all others run at global boot. |
+| Register | `Register(provider Provider)` | Registers a service provider. Providers implementing `HasScope` and returning `true` are stored as scoped providers; all others run at global boot. Implementing `Deferrable` (with a non-empty `Provides`) makes a provider of either set run on demand instead of at boot. |
 | Run | `Run(ctx context.Context, opts ...Option) error` | Runs the full lifecycle: register → boot → wait for context cancellation → terminate. |
 | Scope | `Scope(ctx, opts ...ScopeOption) (*Scope, error)` | Opens a scoped instance (ephemeral by default; see options) and returns a handle the caller must `Terminate` unless `WithAutoTermination` is set. |
 
@@ -320,6 +478,7 @@ scope, err := m.Scope(ctx,
 | Provider | `Register(ctx, container)`, `Boot(ctx, container)`, `Terminate(ctx)` | Service provider that participates in the managed lifecycle. |
 | HasOrder | `Order() int` | Optional interface for providers to specify execution priority. Lower values execute first. |
 | HasScope | `Scoped() bool` | Optional interface for providers to opt into scoped execution. Returning `true` makes `Register` store the provider as scoped. |
+| Deferrable | `Provides() []reflect.Type` | Optional interface for providers to defer their registration until one of the returned types is requested from the container. An empty result opts out. |
 
 The handle returned by `Scope` is a concrete `*Scope`:
 

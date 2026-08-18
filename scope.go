@@ -2,101 +2,34 @@ package provider
 
 import (
 	"context"
-	"errors"
-	"reflect"
-	"slices"
 	"sync"
-
-	"github.com/danceable/container/bind"
 )
-
-// ErrNilScopeValue is returned when a nil value is passed to WithValue. The
-// container binds values by their reflected type, which cannot be determined
-// from an untyped nil.
-var ErrNilScopeValue = errors.New("provider: scope value must not be nil")
-
-// scopeConfig collects the per-scope configuration produced by ScopeOptions.
-type scopeConfig struct {
-	// values are bound into the scoped container before its providers run.
-	values []scopedValue
-
-	// name is the scope name; only used when persistent is true.
-	name string
-
-	// persistent makes the scope a named, persistent child instead of an
-	// anonymous, ephemeral one.
-	persistent bool
-
-	// autoTerminate ties the scope's teardown to the context: the scope is
-	// terminated automatically once the context passed to Scope is cancelled.
-	autoTerminate bool
-}
-
-// scopedValue is a single named value seeded into a scoped container.
-type scopedValue struct {
-	name  string
-	value any
-}
-
-// ScopeOption configures a scoped instance of the container.
-type ScopeOption func(*scopeConfig)
-
-// WithValue seeds the scoped container with value, resolvable by name. The
-// value is bound as a named singleton, so scoped providers (and anything else
-// resolving from the scope) can retrieve it via resolve.WithName(name).
-func WithValue(name string, value any) ScopeOption {
-	return func(c *scopeConfig) {
-		c.values = append(c.values, scopedValue{name: name, value: value})
-	}
-}
-
-// WithPersistent makes the scope a named, persistent child of the manager's
-// container (container.Scope) rather than the default anonymous, ephemeral one
-// (container.Derive). The named child is cached on its parent and reused by
-// later calls with the same name.
-func WithPersistent(name string) ScopeOption {
-	return func(c *scopeConfig) {
-		c.persistent = true
-		c.name = name
-	}
-}
-
-// WithAutoTermination makes the scope terminate itself once the context passed
-// to Scope is cancelled, releasing the caller from calling Terminate. Teardown
-// runs exactly once, whether triggered by the context or by an explicit
-// Terminate, so combining the two is safe.
-func WithAutoTermination() ScopeOption {
-	return func(c *scopeConfig) {
-		c.autoTerminate = true
-	}
-}
 
 // Scope is a live scoped instance: a child container seeded with the WithValue
 // values and with the manager's scoped providers already registered and booted.
-// Call Terminate to tear the scoped providers down in reverse order (unless
-// WithAutoTermination was set, which does this for you on context cancellation).
+// Call Terminate to tear them down in reverse order, unless WithAutoTermination
+// was set.
 type Scope struct {
-	// name is the scope name; empty for an ephemeral scope.
-	name string
-
-	// container is the child container backing this scope.
+	name      string
 	container Container
+	providers *registry
 
-	// sorted holds the scoped provider orders, lowest first.
-	sorted []int
-
-	// providers is the snapshot of scoped providers taken when the scope was created.
-	providers map[int][]Provider
-
-	// termOnce guards termination so it runs exactly once.
 	termOnce sync.Once
+	termErr  error
 
-	// termErr is the result of the single termination run.
-	termErr error
-
-	// done is closed when termination has run, signalling the auto-termination
-	// watcher to stop.
+	// done is closed once termination has run, stopping the watcher.
 	done chan struct{}
+}
+
+func newScope(name string, container Container, providers *registry, ctx context.Context) *Scope {
+	deferred := newLoading(providers, container, ctx)
+
+	return &Scope{
+		name:      name,
+		container: deferred.container(),
+		providers: providers,
+		done:      make(chan struct{}),
+	}
 }
 
 // Name returns the scope name, or an empty string for an ephemeral scope.
@@ -105,56 +38,31 @@ func (s *Scope) Name() string { return s.name }
 // Container returns the child container backing the scope.
 func (s *Scope) Container() Container { return s.container }
 
-// Terminate terminates the scope's providers in reverse order, mirroring the
-// manager's global termination semantics. It is idempotent: only the first call
-// runs the providers' Terminate, and every call returns that run's error.
+// Terminate terminates the scope's providers in reverse order. It is idempotent:
+// only the first call runs them, and every call returns that run's error.
 func (s *Scope) Terminate(ctx context.Context) error {
 	s.termOnce.Do(func() {
 		close(s.done)
-		s.termErr = s.terminate(ctx)
+		s.termErr = terminate(ctx, s.providers)
 	})
 
 	return s.termErr
 }
 
-// terminate runs the scoped providers' Terminate in reverse order.
-func (s *Scope) terminate(ctx context.Context) error {
-	for i := range slices.Backward(s.sorted) {
-		providers := s.providers[s.sorted[i]]
-		for j := range slices.Backward(providers) {
-			if err := providers[j].Terminate(ctx); err != nil {
-				return err
-			}
-		}
+func (s *Scope) open(ctx context.Context) error {
+	if err := register(ctx, s.providers, s.container); err != nil {
+		return err
 	}
 
-	return nil
+	return boot(ctx, s.providers, s.container)
 }
 
-// watch terminates the scope when ctx is cancelled, or stops once the scope has
-// already been terminated. The teardown context drops ctx's cancellation (it is
-// already done) while preserving its values for cleanup.
+// watch terminates the scope once ctx is cancelled. The teardown context drops
+// that cancellation while keeping its values.
 func (s *Scope) watch(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		_ = s.Terminate(context.WithoutCancel(ctx))
 	case <-s.done:
 	}
-}
-
-// bindValue binds value into the container as a named singleton. The container
-// only accepts function resolvers, so the value is wrapped in a generated
-// func() T returning it.
-func bindValue(c Container, name string, value any) error {
-	v := reflect.ValueOf(value)
-	if !v.IsValid() {
-		return ErrNilScopeValue
-	}
-
-	resolver := reflect.MakeFunc(
-		reflect.FuncOf(nil, []reflect.Type{v.Type()}, false),
-		func([]reflect.Value) []reflect.Value { return []reflect.Value{v} },
-	)
-
-	return c.Bind(resolver.Interface(), bind.WithName(name), bind.Singleton())
 }
