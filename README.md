@@ -23,7 +23,7 @@ Features:
 - Deferred providers that load the first time one of the types they provide is requested
 - Global instance for small applications
 - Concurrency-safe with no race conditions
-- Works with any `Container` implementation (e.g. [danceable/container](https://github.com/danceable/container))
+- Works with any container satisfying the `Container` interface — [danceable/container](https://github.com/danceable/container) needs a four-line bridge
 
 ## Documentation
 
@@ -147,11 +147,20 @@ if err := provider.Run(ctx); err != nil {
 
 #### Custom Manager Instance
 
-For more control, create your own `Manager` with a specific container.
+For more control, create your own `Manager` with a specific container. `Manager`
+works against the `Container` interface; the reference container returns its own
+type from `Scope` and `Derive`, so bridge those two methods — embedding provides
+the rest:
 
 ```go
-c := container.New()
-m := provider.New(c)
+type bridge struct{ *container.Container }
+
+func (b bridge) Scope(name string) provider.Container { return bridge{b.Container.Scope(name)} }
+func (b bridge) Derive() provider.Container           { return bridge{b.Container.Derive()} }
+```
+
+```go
+m := provider.New(bridge{container.New()})
 
 m.Register(&DatabaseProvider{})
 m.Register(&CacheProvider{})
@@ -163,6 +172,9 @@ if err := m.Run(ctx); err != nil {
     log.Fatal(err)
 }
 ```
+
+> `provider.Default` is already wired to `container.Default`, so the global
+> instance needs no bridge.
 
 #### Ordered Providers
 
