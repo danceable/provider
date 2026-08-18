@@ -538,3 +538,39 @@ func TestRun_TerminateStopsAtTheFirstError(t *testing.T) {
 	assert.Contains(t, calls, "second.Terminate")
 	assert.NotContains(t, calls, "first.Terminate")
 }
+
+// registeringProvider registers another provider from its own Register.
+type registeringProvider struct {
+	m    *provider.Manager
+	late provider.Provider
+}
+
+func (p *registeringProvider) Register(context.Context, provider.Container) error {
+	p.m.Register(p.late)
+
+	return nil
+}
+
+func (p *registeringProvider) Boot(context.Context, provider.Container) error { return nil }
+func (p *registeringProvider) Terminate(context.Context) error                { return nil }
+
+func TestRun_ProviderRegisteredMidPhaseIsNotBooted(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	m := provider.New(new(containerMock))
+
+	late := new(providerMock)
+	setupProviderMock(late, "late", &calls, nil, nil, nil)
+
+	m.Register(&registeringProvider{m: m, late: late})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.NoError(t, m.Run(ctx, provider.WithTerminationDelay(0)))
+
+	// The register phase had already walked past it, so it bound nothing: it must
+	// not be booted against a container it never registered into, nor terminated.
+	assert.Empty(t, calls)
+}

@@ -30,7 +30,9 @@ func register(ctx context.Context, providers *registry, container Container) err
 
 func boot(ctx context.Context, providers *registry, container Container) error {
 	for _, entry := range providers.list() {
-		if entry.deferred() {
+		// A provider registered after the register phase walked past it never
+		// bound anything, so it takes no part in this run.
+		if entry.deferred() || !entry.registered.Load() {
 			continue
 		}
 
