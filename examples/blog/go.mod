@@ -7,7 +7,7 @@ go 1.26
 replace github.com/danceable/provider => ../..
 
 require (
-	github.com/danceable/container v1.1.0
+	github.com/danceable/container v1.2.0
 	github.com/danceable/provider v1.1.0
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver/v2 v2.6.0

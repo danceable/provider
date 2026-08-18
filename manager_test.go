@@ -68,6 +68,26 @@ func (p *orderedProviderMock) Order() int {
 	return p.order
 }
 
+// capturingProvider records the container it is handed in each phase.
+type capturingProvider struct {
+	registered provider.Container
+	booted     provider.Container
+}
+
+func (p *capturingProvider) Register(_ context.Context, c provider.Container) error {
+	p.registered = c
+
+	return nil
+}
+
+func (p *capturingProvider) Boot(_ context.Context, c provider.Container) error {
+	p.booted = c
+
+	return nil
+}
+
+func (p *capturingProvider) Terminate(context.Context) error { return nil }
+
 func setupProviderMock(p *providerMock, name string, calls *[]string, regErr, bootErr, termErr error) {
 	regCall := p.On("Register", mock.Anything, mock.Anything).Return(regErr)
 	if calls != nil {
@@ -454,4 +474,103 @@ func TestRun_TerminationDeadlineExceeded(t *testing.T) {
 		provider.WithTerminationDeadline(10*time.Millisecond),
 	)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestRun_SameContainerForEveryPhaseAndTheCallback(t *testing.T) {
+	t.Parallel()
+
+	c := new(containerMock)
+	m := provider.New(c)
+
+	p := new(capturingProvider)
+	m.Register(p)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	called := make(chan provider.Container, 1)
+
+	require.NoError(t, m.Run(ctx, provider.WithTerminationDelay(0), provider.WithCallback(
+		func(_ context.Context, c provider.Container) {
+			called <- c
+			cancel()
+		},
+	)))
+
+	select {
+	case fromCallback := <-called:
+		// Nothing is deferred here, so every phase and the callback see the very
+		// container the manager was built with.
+		assert.Same(t, c, p.registered)
+		assert.Same(t, c, p.booted)
+		assert.Same(t, c, fromCallback)
+	case <-time.After(time.Second):
+		t.Fatal("the callback did not run")
+	}
+}
+
+func TestRun_TerminateStopsAtTheFirstError(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	m := provider.New(new(containerMock))
+
+	first := &orderedProviderMock{order: 1}
+	setupProviderMock(&first.providerMock, "first", &calls, nil, nil, nil)
+
+	second := &orderedProviderMock{order: 2}
+	setupProviderMock(&second.providerMock, "second", &calls, nil, nil, errors.New("cleanup failed"))
+
+	third := &orderedProviderMock{order: 3}
+	setupProviderMock(&third.providerMock, "third", &calls, nil, nil, nil)
+
+	m.Register(first)
+	m.Register(second)
+	m.Register(third)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := m.Run(ctx, provider.WithTerminationDelay(0))
+	require.Error(t, err)
+
+	// Termination walks back from the highest order and gives up on the first
+	// failure, so the providers below the failing one are left untouched.
+	assert.Contains(t, calls, "third.Terminate")
+	assert.Contains(t, calls, "second.Terminate")
+	assert.NotContains(t, calls, "first.Terminate")
+}
+
+// registeringProvider registers another provider from its own Register.
+type registeringProvider struct {
+	m    *provider.Manager
+	late provider.Provider
+}
+
+func (p *registeringProvider) Register(context.Context, provider.Container) error {
+	p.m.Register(p.late)
+
+	return nil
+}
+
+func (p *registeringProvider) Boot(context.Context, provider.Container) error { return nil }
+func (p *registeringProvider) Terminate(context.Context) error                { return nil }
+
+func TestRun_ProviderRegisteredMidPhaseIsNotBooted(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	m := provider.New(new(containerMock))
+
+	late := new(providerMock)
+	setupProviderMock(late, "late", &calls, nil, nil, nil)
+
+	m.Register(&registeringProvider{m: m, late: late})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.NoError(t, m.Run(ctx, provider.WithTerminationDelay(0)))
+
+	// The register phase had already walked past it, so it bound nothing: it must
+	// not be booted against a container it never registered into, nor terminated.
+	assert.Empty(t, calls)
 }

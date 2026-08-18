@@ -3,7 +3,7 @@ module github.com/danceable/provider
 go 1.26
 
 require (
-	github.com/danceable/container v1.1.0
+	github.com/danceable/container v1.2.0
 	go.uber.org/dig v1.19.0
 )
 

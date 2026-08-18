@@ -81,6 +81,10 @@ type square struct{ side int }
 
 func (s *square) Area() int { return s.side * s.side }
 
+type circle struct{ area int }
+
+func (c *circle) Area() int { return c.area }
+
 func newRealManager() *Manager {
 	return New(danceable.New(container.New()))
 }

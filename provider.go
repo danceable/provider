@@ -2,317 +2,73 @@ package provider
 
 import (
 	"context"
-	"maps"
-	"slices"
-	"sync"
-	"time"
-
-	"github.com/danceable/provider/internal/contract"
-)
-
-// Container is the backend-agnostic dependency-injection container interface. It
-// is satisfied by the adapters under github.com/danceable/provider/adapters, one
-// per supported container backend (danceable/container, uber/dig).
-type Container = contract.Container
-
-// BindOption configures a binding passed to Container.Bind.
-type BindOption = contract.BindOption
-
-// BindOptions is the resolved neutral configuration for a binding; adapter
-// authors read it to translate a bind onto their backend.
-type BindOptions = contract.BindOptions
-
-// ResolveOption configures a resolution passed to Container.Call, Resolve or Fill.
-type ResolveOption = contract.ResolveOption
-
-// ResolveOptions is the resolved neutral configuration for a resolution.
-type ResolveOptions = contract.ResolveOptions
-
-// Bind-time options, re-exported from the contract so callers configure bindings
-// through the provider package without importing the backend.
-var (
-	// WithName names a binding, enabling multiple concretes per abstraction.
-	WithName = contract.WithName
-
-	// Singleton marks a binding as a single shared instance.
-	Singleton = contract.Singleton
-
-	// Lazy defers a resolver until the first resolution.
-	Lazy = contract.Lazy
-)
-
-// Resolve-time options, re-exported from the contract.
-var (
-	// ResolveName selects a named binding to resolve.
-	ResolveName = contract.WithResolveName
-
-	// WithParams supplies runtime values to satisfy resolver arguments.
-	WithParams = contract.WithParams
+	"reflect"
 )
 
 // Provider defines the interface for a service provider.
 type Provider interface {
 	// Register registers the provider's services into the container.
-	// This method is called during the application's initialization phase.
 	Register(ctx context.Context, container Container) error
 
-	// Boot boots the provider, which is called after all providers have been registered.
-	// This method is used to perform any initialization tasks that require access to other providers.
+	// Boot runs after all providers have registered, for initialization that
+	// depends on their bindings.
 	Boot(ctx context.Context, container Container) error
 
-	// Terminate terminates the provider, which is called before the application exits.
-	// This method is used to release resources or perform cleanup tasks.
+	// Terminate releases what the provider holds. It is called for every provider
+	// whose Register ran, including one whose Boot failed, so it must tolerate a
+	// partially initialized provider.
 	Terminate(ctx context.Context) error
 }
 
-// HasOrder is an optional interface that providers can implement to specify their execution order.
-type HasOrder interface {
+// The interfaces below are optional: a provider implements one to change where,
+// when or in what order it runs. The helpers next to them are the only place
+// that knows a provider may implement more than Provider.
 
-	// Order determines the execution order of the provider.
-	// Providers with lower order values are registered and booted before those with higher values.
-	// 1- first register from lower to higher.
-	// 2- then boot from lower to higher.
-	// 3- finally terminate from higher to lower. (reverse order for termination)
+// HasOrder is an optional interface for providers that specify their execution
+// order. Lower orders register and boot first, and terminate last.
+type HasOrder interface {
 	Order() int
 }
 
-// HasScope is an optional interface that providers can implement to opt into
-// scoped execution. When Register receives a provider whose Scoped method
-// returns true, the provider is run per-scope (by Scope/Derive against a child
-// container) instead of at global boot.
-type HasScope interface {
+func order(provider Provider) (int, bool) {
+	hasOrder, ok := provider.(HasOrder)
+	if !ok {
+		return 0, false
+	}
 
-	// Scoped reports whether the provider should be registered as a scoped provider.
+	return hasOrder.Order(), true
+}
+
+// HasScope is an optional interface for providers that run per-scope instead of
+// at global boot.
+type HasScope interface {
 	Scoped() bool
 }
 
-// Manager manages the lifecycle of service providers, including their registration, booting, and termination.
-type Manager struct {
-	// providers holds the registered service providers.
-	providers map[int][]Provider
+func scoped(provider Provider) bool {
+	hasScope, ok := provider.(HasScope)
 
-	// scopedProviders holds the providers that run per-scope instead of at global boot.
-	scopedProviders map[int][]Provider
-
-	// container is the dependency injection container used to manage service instances.
-	container Container
-
-	// options holds the configuration
-	options *options
-
-	// sortedProvidersCache is a cache of sorted provider keys which specifies the order of execution.
-	sortedProvidersCache []int
-
-	// mu is a mutex to protect the state of the manager.
-	mu sync.RWMutex
+	return ok && hasScope.Scoped()
 }
 
-// New creates a new instance of the service provider manager with the given container.
-func New(container Container) *Manager {
-	return &Manager{
-		providers:       make(map[int][]Provider),
-		scopedProviders: make(map[int][]Provider),
-		container:       container,
-		options:         DefaultOptions(),
-	}
-}
-
-// Register registers a service provider with the service provider manager.
-// Providers that implement HasScope and return true are stored as scoped
-// providers (run per-scope); all others run at global boot.
-func (m *Manager) Register(provider Provider) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	target := m.providers
-	if hasScope, ok := provider.(HasScope); ok && hasScope.Scoped() {
-		target = m.scopedProviders
-	}
-
-	if hasOrder, ok := provider.(HasOrder); ok {
-		order := hasOrder.Order()
-		target[order] = append(target[order], provider)
-
-		return
-	}
-
-	target[len(target)] = append(target[len(target)], provider)
-}
-
-// Run executes the service provider manager, which involves booting all registered providers and handling their termination.
-func (m *Manager) Run(ctx context.Context, opts ...Option) error {
-	for _, opt := range opts {
-		opt(m.options)
-	}
-
-	m.refreshSortedProvidersCache()
-
-	if err := m.register(ctx); err != nil {
-		return err
-	}
-
-	if err := m.boot(ctx); err != nil {
-		return err
-	}
-
-	if m.options.Callback != nil {
-		go m.options.Callback(ctx, m.container)
-	}
-
-	// wait for a signal to terminate the providers.
-	<-ctx.Done()
-
-	// wait for a grace period to allow providers to terminate gracefully.
-	time.Sleep(m.options.TerminationDelay)
-
-	terminationCtx, cancel := context.WithTimeout(context.Background(), m.options.TerminationDeadline)
-	defer cancel()
-
-	terminate := func() <-chan error {
-		ch := make(chan error)
-		go func() {
-			defer close(ch)
-			ch <- m.terminate(terminationCtx)
-		}()
-		return ch
-	}
-
-	select {
-	case <-terminationCtx.Done():
-		return terminationCtx.Err()
-	case err := <-terminate():
-		return err
-	}
-}
-
-// Scope opens a scoped instance of the container and runs the manager's scoped
-// providers against it. By default the scope is anonymous and ephemeral
-// (container.Derive), becoming eligible for garbage collection once the caller
-// drops the returned Scope; WithPersistent makes it a named, persistent child
-// instead. Any WithValue options seed the child before the scoped providers'
-// Register then Boot. The caller owns the returned Scope and must Terminate it
-// when the scope ends, unless WithAutoTermination ties teardown to ctx.
+// Deferrable is an optional interface for providers that defer their
+// registration until one of the types they provide is actually needed.
 //
-// On any error the scope is not returned; matching the manager's global Run,
-// already-booted providers are not terminated here.
-func (m *Manager) Scope(ctx context.Context, opts ...ScopeOption) (*Scope, error) {
-	config := &scopeConfig{}
-	for _, opt := range opts {
-		opt(config)
-	}
-
-	var (
-		name      string
-		container Container
-	)
-	if config.persistent {
-		name = config.name
-		container = m.container.Scope(name)
-	} else {
-		container = m.container.Derive()
-	}
-
-	for _, v := range config.values {
-		if err := bindValue(container, v.name, v.value); err != nil {
-			return nil, err
-		}
-	}
-
-	sorted, providers := m.snapshotScopedProviders()
-	scope := &Scope{
-		name:      name,
-		container: container,
-		sorted:    sorted,
-		providers: providers,
-		done:      make(chan struct{}),
-	}
-
-	for _, order := range scope.sorted {
-		for _, provider := range scope.providers[order] {
-			if err := provider.Register(ctx, container); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	for _, order := range scope.sorted {
-		for _, provider := range scope.providers[order] {
-			if err := provider.Boot(ctx, container); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if config.autoTerminate {
-		go scope.watch(ctx)
-	}
-
-	return scope, nil
+// The phase that would run such a provider walks past it; it is registered and
+// booted the first time one of its types is requested from the container,
+// through Resolve, Call or Fill, and never at all if nothing asks. Loading is
+// depth-first: the provider is completely up, including anything it requests in
+// turn, before the request that triggered it carries on. An empty result opts
+// out of deferral.
+type Deferrable interface {
+	Provides() []reflect.Type
 }
 
-func (m *Manager) register(ctx context.Context) error {
-	for _, order := range m.sortedProvidersCache {
-		providers := m.providers[order]
-		for _, provider := range providers {
-			if err := provider.Register(ctx, m.container); err != nil {
-				return err
-			}
-		}
+func provides(provider Provider) []reflect.Type {
+	deferrable, ok := provider.(Deferrable)
+	if !ok {
+		return nil
 	}
 
-	return nil
-}
-
-func (m *Manager) boot(ctx context.Context) error {
-	for _, order := range m.sortedProvidersCache {
-		providers := m.providers[order]
-		for _, provider := range providers {
-			if err := provider.Boot(ctx, m.container); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) terminate(ctx context.Context) error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	// Terminate providers in reverse order
-	for i := range slices.Backward(m.sortedProvidersCache) {
-		order := m.sortedProvidersCache[i]
-		providers := m.providers[order]
-		for j := range slices.Backward(providers) {
-			provider := providers[j]
-			if err := provider.Terminate(ctx); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) refreshSortedProvidersCache() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.sortedProvidersCache = slices.Sorted(maps.Keys(m.providers))
-}
-
-// snapshotScopedProviders returns, under a single lock, the scoped provider
-// orders (lowest first) and a copy of the scoped providers map. The copy keeps
-// a live scope unaffected by concurrent Register calls.
-func (m *Manager) snapshotScopedProviders() ([]int, map[int][]Provider) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	providers := make(map[int][]Provider, len(m.scopedProviders))
-	for order, ps := range m.scopedProviders {
-		providers[order] = slices.Clone(ps)
-	}
-
-	return slices.Sorted(maps.Keys(m.scopedProviders)), providers
+	return deferrable.Provides()
 }

@@ -14,25 +14,25 @@ package contract
 // neutral surface: each adapter maps these methods and options onto the calls of
 // the container it wraps.
 type Container interface {
-	// Reset clears the container's bindings.
+	// Reset deletes all the existing bindings.
 	Reset()
 
-	// Bind registers a resolver, configured by the given bind options.
+	// Bind maps the type a resolver function returns to that resolver.
 	Bind(receiver any, opts ...BindOption) error
 
-	// Call invokes the receiver, injecting its arguments from the container.
+	// Call invokes a function, resolving its arguments from the container.
 	Call(receiver any, opts ...ResolveOption) error
 
-	// Resolve resolves an abstraction into the receiver pointer.
+	// Resolve fills a pointer with the concrete bound to the type it points to.
 	Resolve(abstraction any, opts ...ResolveOption) error
 
-	// Fill populates the tagged fields of the receiver struct from the container.
+	// Fill resolves the fields of a struct that carry the container tag.
 	Fill(receiver any, opts ...ResolveOption) error
 
-	// Scope creates a named child container for managing scoped dependencies.
+	// Scope returns a named child container, reused on later calls with that name.
 	Scope(name string) Container
 
-	// Derive creates an anonymous child container that inherits the parent's bindings.
+	// Derive returns an anonymous child container, collected once it is dropped.
 	Derive() Container
 }
 
