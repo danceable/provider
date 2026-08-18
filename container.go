@@ -14,25 +14,25 @@ import (
 // reference implementation, deferring decorates any of them with on-demand
 // loading, and an application is free to supply its own.
 type Container interface {
-	// Reset calls the same method of the default concrete.
+	// Reset deletes all the existing bindings.
 	Reset()
 
-	// Bind calls the same method of the default concrete.
+	// Bind maps the type a resolver function returns to that resolver.
 	Bind(receiver any, opts ...bind.BindOption) error
 
-	// Call calls the same method of the default concrete.
+	// Call invokes a function, resolving its arguments from the container.
 	Call(receiver any, opts ...resolve.ResolveOption) error
 
-	// Resolve calls the same method of the default concrete.
+	// Resolve fills a pointer with the concrete bound to the type it points to.
 	Resolve(abstraction any, opts ...resolve.ResolveOption) error
 
-	// Fill calls the same method of the default concrete.
+	// Fill resolves the fields of a struct that carry the container tag.
 	Fill(receiver any, opts ...resolve.ResolveOption) error
 
-	// Scope creates a new child container with the given name, which can be used to manage scoped dependencies.
+	// Scope returns a named child container, reused on later calls with that name.
 	Scope(name string) Container
 
-	// Derive creates a new child container that inherits the binding of the parent container.
+	// Derive returns an anonymous child container, collected once it is dropped.
 	Derive() Container
 }
 
