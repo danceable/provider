@@ -76,6 +76,48 @@ func TestAdapter_Bind_WithName(t *testing.T) {
 	assert.Equal(t, 99, big.Area())
 }
 
+func TestAdapter_Resolve_WithParams(t *testing.T) {
+	t.Parallel()
+
+	a := New(container.New())
+
+	// Lazy and transient, so the resolver runs on each resolution with whatever
+	// the caller supplies rather than once at bind time.
+	require.NoError(t, a.Bind(func(area int) Shape { return &circle{area: area} }, contract.Lazy()))
+
+	var s Shape
+	require.NoError(t, a.Resolve(&s, contract.WithParams(5)))
+	assert.Equal(t, 5, s.Area())
+}
+
+func TestAdapter_Resolve_WithNameAndParams(t *testing.T) {
+	t.Parallel()
+
+	a := New(container.New())
+
+	require.NoError(t, a.Bind(
+		func(area int) Shape { return &circle{area: area} },
+		contract.WithName("sized"),
+		contract.Lazy(),
+	))
+
+	// Both neutral options have to survive the translation together.
+	var s Shape
+	require.NoError(t, a.Resolve(&s, contract.WithResolveName("sized"), contract.WithParams(9)))
+	assert.Equal(t, 9, s.Area())
+}
+
+func TestAdapter_Call_WithParams(t *testing.T) {
+	t.Parallel()
+
+	a := New(container.New())
+
+	// Nothing is bound: the argument comes from the params alone.
+	var got int
+	require.NoError(t, a.Call(func(s Shape) { got = s.Area() }, contract.WithParams(Shape(&circle{area: 3}))))
+	assert.Equal(t, 3, got)
+}
+
 func TestAdapter_Call(t *testing.T) {
 	t.Parallel()
 
