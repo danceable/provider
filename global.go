@@ -9,8 +9,8 @@ import (
 
 // Default is the default service provider manager. It is backed by the
 // danceable/container global container, wrapped in the danceable adapter. To use
-// a different backend (for example uber/dig), build a manager explicitly with
-// New and the corresponding adapter.
+// a different backend, build a manager explicitly with New and an adapter for
+// that container.
 var Default = New(danceable.New(container.Default))
 
 // Register calls the Register method of the default service provider manager.

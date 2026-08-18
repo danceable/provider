@@ -38,8 +38,8 @@ type Container interface {
 
 // BindOptions holds the neutral configuration for a single binding. Adapters
 // read these fields and translate them into their backend's own bind calls; an
-// adapter whose backend lacks a concept (dig, for instance, is always lazy and
-// memoized) may ignore the corresponding field.
+// adapter whose backend lacks a concept — one whose bindings are always lazy and
+// memoized, say — may ignore the corresponding field.
 type BindOptions struct {
 	// Name enables multiple concretes per abstraction, disambiguated by name.
 	Name string

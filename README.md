@@ -23,7 +23,7 @@ Features:
 - Deferred providers that load the first time one of the types they provide is requested
 - Global instance for small applications
 - Concurrency-safe with no race conditions
-- Backend-agnostic: works with any `Container` implementation through adapters, with two shipped out of the box — [danceable/container](https://github.com/danceable/container) and [uber/dig](https://github.com/uber-go/dig)
+- Backend-agnostic: works with any container through an adapter, with [danceable/container](https://github.com/danceable/container) shipped out of the box
 
 ## Documentation
 
@@ -173,30 +173,27 @@ Provider is decoupled from any concrete dependency-injection container. Provider
 bind and resolve through the neutral `provider.Container` interface using neutral
 options (`provider.Singleton()`, `provider.Lazy()`, `provider.WithName()`,
 `provider.ResolveName()`), and an **adapter** maps those onto a specific backend.
-Two adapters ship with the package:
+One adapter ships with the package:
 
 | Backend | Adapter package | Construct with |
 |---------|-----------------|----------------|
 | [danceable/container](https://github.com/danceable/container) | `github.com/danceable/provider/adapters/danceable` | `danceable.New(container.New())` |
-| [uber/dig](https://github.com/uber-go/dig) | `github.com/danceable/provider/adapters/dig` | `dig.New(digcontainer.New())` |
 
 ```go
 import (
+    "github.com/danceable/container"
     "github.com/danceable/provider"
-    "github.com/danceable/provider/adapters/dig"
-
-    digcontainer "go.uber.org/dig"
+    "github.com/danceable/provider/adapters/danceable"
 )
 
-// Run the same providers on uber/dig instead of danceable/container.
-m := provider.New(dig.New(digcontainer.New()))
+m := provider.New(danceable.New(container.New()))
 ```
 
-> Backends differ in capability. dig bindings are always lazy and memoized, so
-> `provider.Singleton()`/`provider.Lazy()` have no extra effect there, and dig has
-> no runtime resolve parameters (`provider.WithParams`) or scope clearing
-> (`Reset` rebuilds the root container). To support another container, implement
-> `provider.Container` in your own adapter.
+> To run the same providers on another container, implement `provider.Container`
+> in an adapter of your own. Backends differ in capability, and the neutral
+> options are the place that shows: an adapter whose bindings are always lazy and
+> memoized has nothing to do for `provider.Singleton()` and `provider.Lazy()`, and
+> one without runtime resolve parameters ignores `provider.WithParams()`.
 >
 > `provider.Default` is already wired to `container.Default` through the
 > danceable adapter, so the global instance needs no wiring of its own.
